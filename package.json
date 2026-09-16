@@ -9,8 +9,8 @@
   },
   "scripts": {
     "build": "pnpm build:action && pnpm build:cli",
-    "build:action": "ncc build src/action.ts -o dist --minify --source-map",
-    "build:cli": "ncc build src/cli.ts -o dist/cli --minify --source-map",
+    "build:action": "ncc build src/action.ts -o dist --minify --source-map --no-cache",
+    "build:cli": "ncc build src/cli.ts -o dist/cli --minify --source-map --no-cache",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
