@@ -1,0 +1,67 @@
+name: Warden Action
+description: Scan a public GitHub or Gitee repository for vulnerabilities and license risks
+author: warden-action
+inputs:
+  token:
+    description: Yuanxi access token
+    required: true
+  scan_type:
+    description: Scan type (security, licenses, or all)
+    required: false
+    default: all
+  repository:
+    description: Git repository URL; defaults to the pull request head repository or current repository
+    required: false
+  branch:
+    description: Git branch; defaults to the pull request head branch or pushed branch
+    required: false
+  project_name:
+    description: Stable Yuanxi project name; generated from repository and branch when omitted
+    required: false
+  fail_on_severity:
+    description: Minimum vulnerability severity that fails the action (warning, low, medium, high, critical, or none)
+    required: false
+    default: high
+  fail_on_license_conflict:
+    description: Fail when project and component licenses conflict
+    required: false
+    default: "true"
+  fail_on_license_risk:
+    description: Fail when a component has a risky license
+    required: false
+    default: "false"
+  timeout_seconds:
+    description: Maximum time to wait for the scan
+    required: false
+    default: "1200"
+  poll_interval_seconds:
+    description: Delay between status requests
+    required: false
+    default: "10"
+  api_base_url:
+    description: Yuanxi API base URL
+    required: false
+    default: https://cybersec.antgroup.com
+outputs:
+  result:
+    description: PASSED or FAILED
+  status:
+    description: Final scan status
+  project_id:
+    description: Yuanxi project ID
+  scan_id:
+    description: Yuanxi scan task ID
+  share_link:
+    description: Scan report share URL, when returned by the service
+  vulnerabilities:
+    description: Number of vulnerabilities returned
+  license_risks:
+    description: Number of risky component licenses returned
+  license_conflicts:
+    description: Number of project license conflicts returned
+runs:
+  using: node20
+  main: dist/index.js
+branding:
+  icon: shield
+  color: blue

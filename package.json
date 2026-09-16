@@ -1,0 +1,28 @@
+{
+  "name": "warden-action",
+  "version": "1.0.0",
+  "description": "GitHub Action and CLI for Yuanxi repository security and license scans",
+  "private": true,
+  "main": "dist/index.js",
+  "bin": {
+    "warden": "src/cli.js"
+  },
+  "scripts": {
+    "build": "ncc build src/action.js -o dist --minify --source-map",
+    "check": "npm run test && npm run build",
+    "test": "node --test",
+    "warden": "node src/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^6.0.1",
+    "dotenv": "^17.2.2"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.38.3"
+  },
+  "license": "MIT"
+}
