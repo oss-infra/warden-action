@@ -22,33 +22,80 @@ jobs:
     scan:
         runs-on: ubuntu-latest
         steps:
-            -
-                name: Check out action
-                uses: actions/checkout@v5
+            - name: Check out action
+              uses: actions/checkout@v5
 
-            -
-                name: Run Warden scan
-                id: warden
-                uses: ./
-                with:
-                    token: ${{ secrets.YUANXI_TOKEN }}
-                    repository: ${{ inputs.repository }}
-                    branch: ${{ inputs.branch }}
-                    scan_type: all
-                    fail_on_severity: high
+            - name: Run Warden scan
+              id: warden
+              uses: ./
+              with:
+                  token: ${{ secrets.YUANXI_TOKEN }}
+                  repository: ${{ inputs.repository }}
+                  branch: ${{ inputs.branch }}
+                  scan_type: all
+                  fail_on_severity: high
 
-            -
-                name: Save structured report
-                if: always() && steps.warden.outputs.json != ''
-                env:
-                    WARDEN_REPORT: ${{ steps.warden.outputs.json }}
-                run: |
-                    printf '%s\n' "$WARDEN_REPORT" > warden-report.json
+            - name: Save structured report
+              if: always() && steps.warden.outputs.json != ''
+              env:
+                  WARDEN_REPORT: ${{ steps.warden.outputs.json }}
+              run: |
+                  printf '%s\n' "$WARDEN_REPORT" | jq '.' > warden-report.json
 
-            -
-                name: Upload structured report
-                if: always() && steps.warden.outputs.json != ''
-                uses: actions/upload-artifact@v6
-                with:
-                    name: warden-report
-                    path: warden-report.json
+            - name: Prepare DingTalk summary
+              id: dingtalk-summary
+              if: always() && steps.warden.outputs.json != ''
+              env:
+                  WARDEN_REPORT: ${{ steps.warden.outputs.json }}
+                  VULNERABILITIES: ${{ steps.warden.outputs.vulnerabilities }}
+                  LICENSE_RISKS: ${{ steps.warden.outputs.license_risks }}
+                  LICENSE_CONFLICTS: ${{ steps.warden.outputs.license_conflicts }}
+                  ACTION_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  scan_repository=$(printf '%s\n' "$WARDEN_REPORT" | jq -r '.target.repository')
+                  scan_branch=$(printf '%s\n' "$WARDEN_REPORT" | jq -r '.target.branch')
+                  total=$((VULNERABILITIES + LICENSE_RISKS + LICENSE_CONFLICTS))
+                  if [ "$total" -eq 0 ]; then
+                      title="Warden 扫描安全"
+                      status="**扫描安全**"
+                  else
+                      title="Warden 扫描结果"
+                      status="**扫描发现风险**"
+                  fi
+
+                  {
+                      echo "title=$title"
+                      echo "text<<WARDEN_MESSAGE"
+                      echo "## $title"
+                      echo
+                      echo "$status"
+                      echo
+                      echo "- 扫描地址：$scan_repository"
+                      echo "- 扫描分支：$scan_branch"
+                      if [ "$total" -ne 0 ]; then
+                          echo
+                          echo "- 漏洞：$VULNERABILITIES"
+                          echo "- 许可证风险：$LICENSE_RISKS"
+                          echo "- 许可证冲突：$LICENSE_CONFLICTS"
+                      fi
+                      echo
+                      echo "[前往 GitHub Actions 查看详情]($ACTION_URL)"
+                      echo "WARDEN_MESSAGE"
+                  } >> "$GITHUB_OUTPUT"
+
+            - name: Upload structured report
+              if: always() && steps.warden.outputs.json != ''
+              uses: actions/upload-artifact@v6
+              with:
+                  name: warden-report
+                  path: warden-report.json
+
+            - name: Send DingTalk notification
+              if: always() && steps.dingtalk-summary.outputs.text != ''
+              uses: x-actions/dingtalk@v2
+              env:
+                  DINGTALK_ACCESS_TOKEN: ${{ secrets.DINGTALK_ACCESS_TOKEN }}
+                  DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+                  MSGTYPE: markdown
+                  TITLE: ${{ steps.dingtalk-summary.outputs.title }}
+                  TEXT: ${{ steps.dingtalk-summary.outputs.text }}
