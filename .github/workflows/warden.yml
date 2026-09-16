@@ -6,12 +6,13 @@ on:
     workflow_dispatch:
         inputs:
             repository:
-                description: Public GitHub or Gitee repository URL (empty scans this repository)
-                required: false
+                description: Public GitHub or Gitee repository URL
+                required: true
                 type: string
             branch:
-                description: Branch to scan (empty uses the current branch)
+                description: Branch to scan
                 required: false
+                default: main
                 type: string
 
 permissions:
@@ -21,28 +22,33 @@ jobs:
     scan:
         runs-on: ubuntu-latest
         steps:
-            - name: Check out action
-              uses: actions/checkout@v4
+            -
+                name: Check out action
+                uses: actions/checkout@v5
 
-            - name: Run Warden scan
-              id: warden
-              uses: ./
-              with:
-                  token: ${{ secrets.YUANXI_TOKEN }}
-                  repository: ${{ inputs.repository }}
-                  branch: ${{ inputs.branch }}
-                  scan_type: all
-                  fail_on_severity: high
+            -
+                name: Run Warden scan
+                id: warden
+                uses: ./
+                with:
+                    token: ${{ secrets.YUANXI_TOKEN }}
+                    repository: ${{ inputs.repository }}
+                    branch: ${{ inputs.branch }}
+                    scan_type: all
+                    fail_on_severity: high
 
-            - name: Save structured report
-              if: always() && steps.warden.outputs.json != ''
-              env:
-                  WARDEN_REPORT: ${{ steps.warden.outputs.json }}
-              run: printf '%s\n' "$WARDEN_REPORT" > warden-report.json
+            -
+                name: Save structured report
+                if: always() && steps.warden.outputs.json != ''
+                env:
+                    WARDEN_REPORT: ${{ steps.warden.outputs.json }}
+                run: |
+                    printf '%s\n' "$WARDEN_REPORT" > warden-report.json
 
-            - name: Upload structured report
-              if: always() && steps.warden.outputs.json != ''
-              uses: actions/upload-artifact@v4
-              with:
-                  name: warden-report
-                  path: warden-report.json
+            -
+                name: Upload structured report
+                if: always() && steps.warden.outputs.json != ''
+                uses: actions/upload-artifact@v6
+                with:
+                    name: warden-report
+                    path: warden-report.json
