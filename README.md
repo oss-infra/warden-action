@@ -101,7 +101,6 @@ on:
 
 GitHub and Gitee HTTPS URLs are normalized to the `.git` form expected by Yuanxi. Explicit `repository`, `branch`, and `project_name` inputs override event-derived values.
 
-Set `debug: true` to log each API URL, request body, HTTP/envelope status, and paginated result counts. Access tokens are always replaced with `[REDACTED]`; full response items are not logged.
 
 ### Outputs
 

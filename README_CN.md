@@ -101,7 +101,6 @@ on:
 
 GitHub/Gitee HTTPS 地址会自动转换为源蜥要求的 `.git` 形式。显式传入 `repository`、`branch` 和 `project_name` 可覆盖事件解析结果。
 
-设置 `debug: true` 后会记录每次请求的 API 地址、请求体、HTTP/业务状态和分页结果数量。访问令牌始终替换为 `[REDACTED]`，不会打印完整响应明细。
 
 ### 输出参数
 

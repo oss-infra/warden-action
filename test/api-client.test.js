@@ -67,9 +67,15 @@ test("debug logging includes request details without exposing the token", async 
 
   assert.match(
     messages[0],
-    /POST https:\/\/scanner\.example\/api\/sca\/open\/v1\/repo\/vuls\/detail/,
+    /API request: POST https:\/\/scanner\.example\/api\/sca\/open\/v1\/repo\/vuls\/detail/,
   );
-  assert.match(messages[0], /"page":2/);
-  assert.match(messages[1], /itemList=1/);
+  assert.match(messages[0], /"token": "\[REDACTED\]"/);
+  assert.match(messages[0], /"repoId": "repo-1"/);
+  assert.match(messages[0], /"page": 2/);
+  assert.match(messages[0], /"size": 300/);
+  assert.match(messages[0], /"content-type": "application\/json"/);
+  assert.match(messages[1], /durationMs: \d+/);
+  assert.match(messages[1], /httpStatus: 200/);
+  assert.match(messages[1], /data: totalPages=1 itemList=1/);
   assert.doesNotMatch(messages.join("\n"), /secret-token/);
 });

@@ -1,6 +1,25 @@
 "use strict";
 
 const API_PREFIX = "/api/sca/open/v1/repo";
+const SENSITIVE_KEY = /token|secret|authorization|private[_-]?key/i;
+
+function redactSensitive(value, key = "") {
+  if (SENSITIVE_KEY.test(key)) return "[REDACTED]";
+  if (Array.isArray(value)) return value.map((item) => redactSensitive(item));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([childKey, childValue]) => [
+        childKey,
+        redactSensitive(childValue, childKey),
+      ]),
+    );
+  }
+  return value;
+}
+
+function debugJson(value) {
+  return JSON.stringify(redactSensitive(value), null, 2);
+}
 
 function responseSummary(data) {
   if (!data || typeof data !== "object") return "data=empty";
@@ -76,20 +95,29 @@ class WardenApiClient {
 
   async request(method, path, { query = {}, body } = {}) {
     const url = new URL(`${this.baseUrl}${path}`);
-    url.search = new URLSearchParams({
+    const queryWithToken = {
       ...query,
       token: this.token,
-    }).toString();
+    };
+    url.search = new URLSearchParams(queryWithToken).toString();
+    const headers = body ? { "content-type": "application/json" } : {};
+    const startedAt = Date.now();
     if (this.debug) {
       const safeUrl = new URL(url);
       safeUrl.searchParams.set("token", "[REDACTED]");
       this.logger(
-        `${method} ${safeUrl.toString()}${body ? ` body=${JSON.stringify(body)}` : ""}`,
+        [
+          `API request: ${method} ${safeUrl.toString()}`,
+          `  path: ${path}`,
+          `  query: ${debugJson(queryWithToken)}`,
+          `  headers: ${debugJson(headers)}`,
+          `  body: ${body === undefined ? "none" : debugJson(body)}`,
+        ].join("\n"),
       );
     }
     const response = await this.fetch(url, {
       method,
-      headers: body ? { "content-type": "application/json" } : undefined,
+      headers: body ? headers : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -105,7 +133,15 @@ class WardenApiClient {
 
     if (this.debug) {
       this.logger(
-        `${method} ${path} response http=${response.status} code=${payload.code} success=${payload.success} ${responseSummary(payload.data)}`.trim(),
+        [
+          `API response: ${method} ${path}`,
+          `  durationMs: ${Date.now() - startedAt}`,
+          `  httpStatus: ${response.status}`,
+          `  code: ${payload.code}`,
+          `  success: ${payload.success}`,
+          `  message: ${payload.message || ""}`,
+          `  data: ${responseSummary(payload.data)}`,
+        ].join("\n"),
       );
     }
 
@@ -122,4 +158,10 @@ class WardenApiClient {
   }
 }
 
-module.exports = { WardenApiClient, WardenApiError };
+module.exports = {
+  WardenApiClient,
+  WardenApiError,
+  debugJson,
+  redactSensitive,
+  responseSummary,
+};
