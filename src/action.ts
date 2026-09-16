@@ -1,4 +1,4 @@
-import { buildConfig } from "./config";
+import { buildConfig, parseBoolean } from "./config";
 import {
   licenseRiskMessage,
   structuredReport,
@@ -17,6 +17,10 @@ export async function main(): Promise<void> {
   const github = await import("@actions/github");
   try {
     const defaults = githubDefaults(github.context as GitHubContext);
+    const enforcePolicy = parseBoolean(
+      core.getInput("enforce_policy"),
+      "enforce-policy",
+    );
     const config = buildConfig({
       token: core.getInput("token", { required: true }),
       scanType: core.getInput("scan_type"),
@@ -42,18 +46,21 @@ export async function main(): Promise<void> {
 
     for (const item of outcome.results.vulnerabilities.slice(0, 20)) {
       const message = vulnerabilityMessage(item);
-      if (outcome.policy.blockingVulnerabilities.includes(item))
+      if (
+        enforcePolicy &&
+        outcome.policy.blockingVulnerabilities.includes(item)
+      )
         core.error(message);
       else core.warning(message);
     }
     for (const item of outcome.policy.licenseRisks.slice(0, 20)) {
       const message = licenseRiskMessage(item);
-      if (config.failOnLicenseRisk) core.error(message);
+      if (enforcePolicy && config.failOnLicenseRisk) core.error(message);
       else core.warning(message);
     }
     for (const item of outcome.policy.licenseConflicts.slice(0, 20)) {
       const message = `License conflict: ${item.projectLicense || "?"} / ${item.sbomLicense || "?"}${item.explanation ? ` | ${item.explanation}` : ""}`;
-      if (config.failOnLicenseConflict) core.error(message);
+      if (enforcePolicy && config.failOnLicenseConflict) core.error(message);
       else core.warning(message);
     }
 
@@ -72,7 +79,8 @@ export async function main(): Promise<void> {
     await core.summary
       .addCodeBlock(summary(outcome.results, outcome.policy))
       .write();
-    if (outcome.policy.failed) core.setFailed("Warden policy check failed");
+    if (enforcePolicy && outcome.policy.failed)
+      core.setFailed("Warden policy check failed");
   } catch (error) {
     core.setOutput("result", "FAILED");
     core.setFailed(error instanceof Error ? error.message : String(error));

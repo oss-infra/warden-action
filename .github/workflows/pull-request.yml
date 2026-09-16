@@ -35,6 +35,7 @@ jobs:
                   fail_on_severity: high
                   fail_on_license_conflict: true
                   fail_on_license_risk: true
+                  enforce_policy: true
 
             - name: Save structured report
               if: always() && steps.warden.outputs.json != ''

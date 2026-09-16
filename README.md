@@ -94,10 +94,13 @@ on:
 | `fail_on_severity`         | no       | `high`                          | `warning`, `low`, `medium`, `high`, `critical`, or `none` |
 | `fail_on_license_conflict` | no       | `true`                          | Fail on project/component license conflicts               |
 | `fail_on_license_risk`     | no       | `false`                         | Fail on components marked as license risks                |
+| `enforce_policy`           | no       | `true`                          | Fail job on findings; `false` enables review mode         |
 | `timeout_seconds`          | no       | `1200`                          | Scan timeout                                              |
 | `poll_interval_seconds`    | no       | `10`                            | Status polling interval                                   |
 | `api_base_url`             | no       | `https://cybersec.antgroup.com` | Yuanxi API origin                                         |
 | `debug`                    | no       | `false`                         | Log redacted requests and complete response payloads      |
+
+Policy inputs always determine the reported `PASSED` or `FAILED` result. With `enforce_policy: false`, findings are reported as warnings without failing the job; scan and API errors still fail. Use review mode for scheduled or self scans and keep enforcement enabled for pull request gates.
 
 GitHub and Gitee HTTPS URLs are normalized to the `.git` form expected by Yuanxi. Explicit `repository`, `branch`, and `project_name` inputs override event-derived values.
 

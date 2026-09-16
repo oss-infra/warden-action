@@ -30,6 +30,10 @@ inputs:
     description: Fail when a component has a risky license
     required: false
     default: "false"
+  enforce_policy:
+    description: Fail the action when the configured policy finds blocking issues
+    required: false
+    default: "true"
   timeout_seconds:
     description: Maximum time to wait for the scan
     required: false

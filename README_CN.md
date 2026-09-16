@@ -94,10 +94,13 @@ on:
 | `fail_on_severity`         | 否   | `high`                          | `warning`、`low`、`medium`、`high`、`critical` 或 `none` |
 | `fail_on_license_conflict` | 否   | `true`                          | 发现项目与组件许可证冲突时失败                           |
 | `fail_on_license_risk`     | 否   | `false`                         | 发现风险组件许可证时失败                                 |
+| `enforce_policy`           | 否   | `true`                          | 策略发现问题时阻断任务；review 模式设为 `false`          |
 | `timeout_seconds`          | 否   | `1200`                          | 扫描超时时间                                             |
 | `poll_interval_seconds`    | 否   | `10`                            | 状态查询间隔                                             |
 | `api_base_url`             | 否   | `https://cybersec.antgroup.com` | 源蜥 API 地址                                            |
 | `debug`                    | 否   | `false`                         | 输出脱敏请求及完整响应内容                               |
+
+策略输入始终用于计算报告中的 `PASSED` 或 `FAILED`。设置 `enforce_policy: false` 后，发现的问题会以 warning 记录但不会使任务失败；扫描或 API 异常仍会导致失败。定时扫描和自扫描可使用 review 模式，Pull Request 门禁应保持启用阻断。
 
 GitHub/Gitee HTTPS 地址会自动转换为源蜥要求的 `.git` 形式。显式传入 `repository`、`branch` 和 `project_name` 可覆盖事件解析结果。
 
