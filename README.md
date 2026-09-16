@@ -118,8 +118,6 @@ Policy violations and operational errors fail the Action step.
 
 The `json` output contains versioned `target`, `scan`, `result`, `summary`, and `details` fields. Give the scan step an `id` and pass `${{ steps.warden.outputs.json }}` to a later webhook step. The included `.github/workflows/warden.yml` scans this project on pushes and supports manually overriding the public repository URL and branch; configure the `YUANXI_TOKEN` repository secret before running it.
 
-The workflow formats the JSON report before uploading it and sends a concise Markdown notification through the third-party `x-actions/dingtalk` Action. Add `DINGTALK_ACCESS_TOKEN` and `DINGTALK_SECRET` as GitHub Actions repository secrets; values in the local `.env` file are not uploaded to GitHub. A zero-risk scan is reported as **Scan safe**. Other notifications contain only the finding counts and a link to the GitHub Actions run details.
-
 ## CLI
 
 Node.js 20 or later and a Git checkout with a public GitHub/Gitee remote are required.

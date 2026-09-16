@@ -118,8 +118,6 @@ GitHub/Gitee HTTPS 地址会自动转换为源蜥要求的 `.git` 形式。显�
 
 `json` 输出包含带版本号的 `target`、`scan`、`result`、`summary` 和 `details` 字段。为扫描步骤设置 `id` 后，可在后续 webhook 步骤中通过 `${{ steps.warden.outputs.json }}` 获取报告。项目内置的 `.github/workflows/warden.yml` 会在推送时扫描本项目，也支持手动指定公开仓库地址和分支；运行前请配置仓库 Secret `YUANXI_TOKEN`。
 
-workflow 会格式化 JSON 报告后再上传，并通过第三方 `x-actions/dingtalk` Action 发送精简的 Markdown 通知。请将 `.env` 中的 `DINGTALK_ACCESS_TOKEN` 和 `DINGTALK_SECRET` 配置为 GitHub Actions 仓库 Secrets；本地 `.env` 不会自动上传到 GitHub。三项风险计数均为 0 时通知显示“扫描安全”，否则只显示风险数量汇总，并引导用户进入本次 GitHub Actions 详情页查看。
-
 ## 命令行工具
 
 需要 Node.js 20 或更高版本，并且当前 Git 仓库应配置公开的 GitHub/Gitee 远程地址。
