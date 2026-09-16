@@ -58,7 +58,13 @@ test("debug logging includes request details without exposing the token", async 
       json: async () => ({
         code: 0,
         success: true,
-        data: { itemList: [{ id: 1 }], totalPages: 1 },
+        data: {
+          itemList: [{ id: 1, subject: "Example vulnerability" }],
+          totalPages: 1,
+          shareLink:
+            "https://scanner.example/report?id=1&stoken=response-secret",
+          metadata: { authorization: "response-authorization" },
+        },
       }),
     }),
   });
@@ -77,5 +83,11 @@ test("debug logging includes request details without exposing the token", async 
   assert.match(messages[1], /durationMs: \d+/);
   assert.match(messages[1], /httpStatus: 200/);
   assert.match(messages[1], /data: totalPages=1 itemList=1/);
+  assert.match(messages[1], /payload: \{/);
+  assert.match(messages[1], /"subject": "Example vulnerability"/);
+  assert.match(messages[1], /stoken=\[REDACTED\]/);
+  assert.match(messages[1], /"authorization": "\[REDACTED\]"/);
   assert.doesNotMatch(messages.join("\n"), /secret-token/);
+  assert.doesNotMatch(messages.join("\n"), /response-secret/);
+  assert.doesNotMatch(messages.join("\n"), /response-authorization/);
 });

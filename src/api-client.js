@@ -2,23 +2,34 @@
 
 const API_PREFIX = "/api/sca/open/v1/repo";
 const SENSITIVE_KEY = /token|secret|authorization|private[_-]?key/i;
+const SENSITIVE_QUERY_PARAMETER =
+  /([?&](?:access_token|stoken|token|secret)=)[^&#\s"']*/gi;
 
-function redactSensitive(value, key = "") {
+function redactSensitive(value, key = "", sensitiveValues = []) {
   if (SENSITIVE_KEY.test(key)) return "[REDACTED]";
-  if (Array.isArray(value)) return value.map((item) => redactSensitive(item));
+  if (typeof value === "string") {
+    let redacted = value.replace(SENSITIVE_QUERY_PARAMETER, "$1[REDACTED]");
+    for (const sensitiveValue of sensitiveValues) {
+      if (sensitiveValue)
+        redacted = redacted.replaceAll(sensitiveValue, "[REDACTED]");
+    }
+    return redacted;
+  }
+  if (Array.isArray(value))
+    return value.map((item) => redactSensitive(item, "", sensitiveValues));
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value).map(([childKey, childValue]) => [
         childKey,
-        redactSensitive(childValue, childKey),
+        redactSensitive(childValue, childKey, sensitiveValues),
       ]),
     );
   }
   return value;
 }
 
-function debugJson(value) {
-  return JSON.stringify(redactSensitive(value), null, 2);
+function debugJson(value, sensitiveValues = []) {
+  return JSON.stringify(redactSensitive(value, "", sensitiveValues), null, 2);
 }
 
 function responseSummary(data) {
@@ -141,6 +152,7 @@ class WardenApiClient {
           `  success: ${payload.success}`,
           `  message: ${payload.message || ""}`,
           `  data: ${responseSummary(payload.data)}`,
+          `  payload: ${debugJson(payload, [this.token])}`,
         ].join("\n"),
       );
     }

@@ -97,10 +97,9 @@ on:
 | `timeout_seconds`          | 否   | `1200`                          | 扫描超时时间                                             |
 | `poll_interval_seconds`    | 否   | `10`                            | 状态查询间隔                                             |
 | `api_base_url`             | 否   | `https://cybersec.antgroup.com` | 源蜥 API 地址                                            |
-| `debug`                    | 否   | `false`                         | 输出脱敏请求参数和响应数量                               |
+| `debug`                    | 否   | `false`                         | 输出脱敏请求及完整响应内容                               |
 
 GitHub/Gitee HTTPS 地址会自动转换为源蜥要求的 `.git` 形式。显式传入 `repository`、`branch` 和 `project_name` 可覆盖事件解析结果。
-
 
 ### 输出参数
 
