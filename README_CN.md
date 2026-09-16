@@ -2,8 +2,6 @@
 
 [English](README.md)
 
-项目地址：[oss-infra/warden-action](https://github.com/oss-infra/warden-action)
-
 `warden-action` 通过[源蜥安全分析平台](https://cybersec.antgroup.com/)执行仓库安全与开源许可证检查，同时提供 GitHub Action 和 Node.js 命令行工具。
 
 ## 功能范围
@@ -114,8 +112,11 @@ GitHub/Gitee HTTPS 地址会自动转换为源蜥要求的 `.git` 形式。显�
 | `vulnerabilities`   | 漏洞数量             |
 | `license_risks`     | 风险组件许可证数量   |
 | `license_conflicts` | 项目许可证冲突数量   |
+| `json`              | 结构化 JSON 扫描报告 |
 
 策略不通过或运行异常都会使 Action step 失败。
+
+`json` 输出包含带版本号的 `target`、`scan`、`result`、`summary` 和 `details` 字段。为扫描步骤设置 `id` 后，可在后续 webhook 步骤中通过 `${{ steps.warden.outputs.json }}` 获取报告。项目内置的 `.github/workflows/warden.yml` 会在推送时扫描本项目，也支持手动指定公开仓库地址和分支；运行前请配置仓库 Secret `YUANXI_TOKEN`。
 
 ## 命令行工具
 

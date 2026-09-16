@@ -2,8 +2,6 @@
 
 [简体中文](README_CN.md)
 
-Repository: [oss-infra/warden-action](https://github.com/oss-infra/warden-action)
-
 `warden-action` runs repository security and open-source license checks through the [Yuanxi security analysis platform](https://cybersec.antgroup.com/). It is available as both a GitHub Action and a Node.js CLI.
 
 ## What It Does
@@ -114,8 +112,11 @@ GitHub and Gitee HTTPS URLs are normalized to the `.git` form expected by Yuanxi
 | `vulnerabilities`   | Vulnerability count            |
 | `license_risks`     | Risky component-license count  |
 | `license_conflicts` | Project license-conflict count |
+| `json`              | Structured JSON report         |
 
 Policy violations and operational errors fail the Action step.
+
+The `json` output contains versioned `target`, `scan`, `result`, `summary`, and `details` fields. Give the scan step an `id` and pass `${{ steps.warden.outputs.json }}` to a later webhook step. The included `.github/workflows/warden.yml` scans this project on pushes and supports manually overriding the public repository URL and branch; configure the `YUANXI_TOKEN` repository secret before running it.
 
 ## CLI
 

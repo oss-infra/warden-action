@@ -4,7 +4,7 @@
 const { execFileSync } = require("node:child_process");
 require("dotenv").config({ quiet: true });
 const { buildConfig } = require("./config");
-const { summary, vulnerabilityMessage } = require("./format");
+const { structuredReport, summary, vulnerabilityMessage } = require("./format");
 const { run } = require("./run");
 
 const HELP = `warden - run a Yuanxi repository scan
@@ -82,7 +82,9 @@ async function main(argv = process.argv.slice(2)) {
     onStatus: (status) => console.error(`Scan status: ${status}`),
   });
   if (args.json) {
-    process.stdout.write(`${JSON.stringify(outcome, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify(structuredReport(config, outcome.results, outcome.policy), null, 2)}\n`,
+    );
   } else {
     for (const item of outcome.results.vulnerabilities)
       console.log(vulnerabilityMessage(item));

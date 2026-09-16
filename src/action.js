@@ -3,7 +3,7 @@
 const core = require("@actions/core");
 const github = require("@actions/github");
 const { buildConfig } = require("./config");
-const { summary, vulnerabilityMessage } = require("./format");
+const { structuredReport, summary, vulnerabilityMessage } = require("./format");
 const { resolveGitHubTarget } = require("./github-context");
 const { run } = require("./run");
 
@@ -55,6 +55,10 @@ async function main() {
     core.setOutput("vulnerabilities", outcome.results.vulnerabilities.length);
     core.setOutput("license_risks", outcome.policy.licenseRisks.length);
     core.setOutput("license_conflicts", outcome.policy.licenseConflicts.length);
+    core.setOutput(
+      "json",
+      JSON.stringify(structuredReport(config, outcome.results, outcome.policy)),
+    );
     await core.summary
       .addCodeBlock(summary(outcome.results, outcome.policy))
       .write();

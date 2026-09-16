@@ -59,6 +59,8 @@ outputs:
     description: Number of risky component licenses returned
   license_conflicts:
     description: Number of project license conflicts returned
+  json:
+    description: Structured JSON report for downstream integrations
 runs:
   using: node20
   main: dist/index.js
