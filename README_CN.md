@@ -121,7 +121,7 @@ GitHub/Gitee HTTPS 地址会自动转换为源蜥要求的 `.git` 形式。显�
 
 ## 命令行工具
 
-需要 Node.js 20 或更高版本，并且当前 Git 仓库应配置公开的 GitHub/Gitee 远程地址。
+需要 Node.js 24 或更高版本，并且当前 Git 仓库应配置公开的 GitHub/Gitee 远程地址。
 
 ```bash
 pnpm install
@@ -158,11 +158,12 @@ pnpm warden \
 git clone git@github.com:oss-infra/warden-action.git
 cd warden-action
 pnpm install
+pnpm typecheck
 pnpm test
 pnpm build
 ```
 
-`dist/index.js` 是 GitHub Action 的打包入口。修改 `src/` 后必须重新构建。
+源码与测试均使用严格模式 TypeScript。`dist/index.js` 是 GitHub Action 的打包入口，`dist/cli/index.js` 是 CLI 的打包入口。修改 `src/` 后必须重新构建两者。
 
 当前示例使用 `@main`，首次推送后即可运行。发布 `v1` 标签后，建议使用方固定到 `oss-infra/warden-action@v1`。
 

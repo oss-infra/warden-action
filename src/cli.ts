@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-"use strict";
 
-const { execFileSync } = require("node:child_process");
-require("dotenv").config({ quiet: true });
-const { buildConfig } = require("./config");
-const { structuredReport, summary, vulnerabilityMessage } = require("./format");
-const { run } = require("./run");
+import { execFileSync } from "node:child_process";
+import dotenv from "dotenv";
+import { buildConfig } from "./config";
+import { structuredReport, summary, vulnerabilityMessage } from "./format";
+import { run } from "./run";
 
-const HELP = `warden - run a Yuanxi repository scan
+dotenv.config({ quiet: true });
+
+export const HELP = `warden - run a Yuanxi repository scan
 
 Usage:
   warden [options]
@@ -29,16 +30,35 @@ Options:
   --help                             Show help
 `;
 
-function parseArgs(argv) {
-  const args = {};
+type Arguments = Record<string, string | boolean>;
+const BOOLEAN_OPTIONS = new Set(["--help", "--json", "--debug"]);
+const VALUE_OPTIONS = new Set([
+  "--token",
+  "--repository",
+  "--branch",
+  "--project-name",
+  "--scan-type",
+  "--fail-on-severity",
+  "--fail-on-license-conflict",
+  "--fail-on-license-risk",
+  "--timeout-seconds",
+  "--poll-interval-seconds",
+  "--api-base-url",
+]);
+
+export function parseArgs(argv: readonly string[]): Arguments {
+  const args: Arguments = {};
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (["--help", "--json", "--debug"].includes(argument)) {
+    if (argument === undefined) break;
+    if (BOOLEAN_OPTIONS.has(argument)) {
       args[argument.slice(2)] = true;
       continue;
     }
     if (!argument.startsWith("--"))
       throw new Error(`Unexpected argument: ${argument}`);
+    if (!VALUE_OPTIONS.has(argument))
+      throw new Error(`Unknown option: ${argument}`);
     const value = argv[index + 1];
     if (!value || value.startsWith("--"))
       throw new Error(`Missing value for ${argument}`);
@@ -48,7 +68,7 @@ function parseArgs(argv) {
   return args;
 }
 
-function gitValue(...args) {
+function gitValue(...args: string[]): string {
   try {
     return execFileSync("git", args, {
       encoding: "utf8",
@@ -59,32 +79,44 @@ function gitValue(...args) {
   }
 }
 
-async function main(argv = process.argv.slice(2)) {
+function stringArgument(args: Arguments, name: string): string | undefined {
+  const value = args[name];
+  return typeof value === "string" ? value : undefined;
+}
+
+export async function main(
+  argv: readonly string[] = process.argv.slice(2),
+): Promise<number> {
   const args = parseArgs(argv);
-  if (args.help) {
+  if (args["help"]) {
     process.stdout.write(HELP);
     return 0;
   }
   const config = buildConfig({
-    token: args.token || process.env.WARDEN_TOKEN || process.env.YUANXI_TOKEN,
+    token:
+      stringArgument(args, "token") ||
+      process.env.WARDEN_TOKEN ||
+      process.env.YUANXI_TOKEN,
     repository:
-      args.repository || gitValue("config", "--get", "remote.origin.url"),
-    branch: args.branch || gitValue("branch", "--show-current"),
-    projectName: args["project-name"],
-    scanType: args["scan-type"],
-    failOnSeverity: args["fail-on-severity"],
-    failOnLicenseConflict: args["fail-on-license-conflict"],
-    failOnLicenseRisk: args["fail-on-license-risk"],
-    timeoutSeconds: args["timeout-seconds"],
-    pollIntervalSeconds: args["poll-interval-seconds"],
-    baseUrl: args["api-base-url"],
-    debug: args.debug,
+      stringArgument(args, "repository") ||
+      gitValue("config", "--get", "remote.origin.url"),
+    branch:
+      stringArgument(args, "branch") || gitValue("branch", "--show-current"),
+    projectName: stringArgument(args, "project-name"),
+    scanType: stringArgument(args, "scan-type"),
+    failOnSeverity: stringArgument(args, "fail-on-severity"),
+    failOnLicenseConflict: stringArgument(args, "fail-on-license-conflict"),
+    failOnLicenseRisk: stringArgument(args, "fail-on-license-risk"),
+    timeoutSeconds: stringArgument(args, "timeout-seconds"),
+    pollIntervalSeconds: stringArgument(args, "poll-interval-seconds"),
+    baseUrl: stringArgument(args, "api-base-url"),
+    debug: args["debug"] === true,
   });
   const outcome = await run(config, {
     onStatus: (status) => console.error(`Scan status: ${status}`),
     onDebug: (message) => console.error(`[debug] ${message}`),
   });
-  if (args.json) {
+  if (args["json"]) {
     process.stdout.write(
       `${JSON.stringify(structuredReport(config, outcome.results, outcome.policy), null, 2)}\n`,
     );
@@ -101,10 +133,10 @@ if (require.main === module) {
     .then((code) => {
       process.exitCode = code;
     })
-    .catch((error) => {
-      console.error(`warden: ${error.message}`);
+    .catch((error: unknown) => {
+      console.error(
+        `warden: ${error instanceof Error ? error.message : String(error)}`,
+      );
       process.exitCode = 2;
     });
 }
-
-module.exports = { HELP, main, parseArgs };

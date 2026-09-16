@@ -121,7 +121,7 @@ The `json` output contains versioned `target`, `scan`, `result`, `summary`, and 
 
 ## CLI
 
-Node.js 20 or later and a Git checkout with a public GitHub/Gitee remote are required.
+Node.js 24 or later and a Git checkout with a public GitHub/Gitee remote are required.
 
 ```bash
 pnpm install
@@ -158,11 +158,12 @@ By default, `high` and `critical` vulnerabilities and any project license confli
 git clone git@github.com:oss-infra/warden-action.git
 cd warden-action
 pnpm install
+pnpm typecheck
 pnpm test
 pnpm build
 ```
 
-`dist/index.js` is the bundled GitHub Action entry point and must be rebuilt after changes under `src/`.
+The source and tests are written in strict TypeScript. `dist/index.js` is the bundled GitHub Action entry point, and `dist/cli/index.js` is the bundled CLI entry point. Both must be rebuilt after changes under `src/`.
 
 The examples use `@main` so they work after the initial push. After publishing the `v1` tag, consumers should pin the Action to `oss-infra/warden-action@v1`.
 

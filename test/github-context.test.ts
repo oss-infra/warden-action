@@ -1,8 +1,6 @@
-"use strict";
-
-const assert = require("node:assert/strict");
-const test = require("node:test");
-const { resolveGitHubTarget } = require("../src/github-context");
+import assert from "node:assert/strict";
+import test from "node:test";
+import { resolveGitHubTarget } from "../src/github-context";
 
 for (const eventName of ["pull_request", "pull_request_target"]) {
   test(`${eventName} scans the pull request head repository and branch`, () => {

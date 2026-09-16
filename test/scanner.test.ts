@@ -1,19 +1,18 @@
-"use strict";
-
-const assert = require("node:assert/strict");
-const test = require("node:test");
-const {
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
   collectLicensePages,
   makeProjectName,
   normalizeRepository,
   runScan,
   validateProjectName,
   waitForScan,
-} = require("../src/scanner");
+} from "../src/scanner";
+import type { ScannerClient } from "../src/types";
 
 test("runs one scan and retrieves both result types", async () => {
-  const calls = [];
-  const client = {
+  const calls: Array<[string, unknown]> = [];
+  const client: ScannerClient = {
     createScan: async (input) => {
       calls.push(["create", input]);
       return { scanId: "scan-1", projectId: "repo-1" };
@@ -52,7 +51,9 @@ test("runs one scan and retrieves both result types", async () => {
 });
 
 test("throws when polling reaches a failed state", async () => {
-  const client = { getStatus: async () => ({ status: "扫描失败" }) };
+  const client: Pick<ScannerClient, "getStatus"> = {
+    getStatus: async () => ({ status: "扫描失败" }),
+  };
   await assert.rejects(
     waitForScan(client, "scan-1", {
       timeoutMs: 100,
@@ -64,8 +65,8 @@ test("throws when polling reaches a failed state", async () => {
 });
 
 test("paginates license responses when totalPages is omitted", async () => {
-  const requestedPages = [];
-  const client = {
+  const requestedPages: number[] = [];
+  const client: Pick<ScannerClient, "getLicenses"> = {
     getLicenses: async (_repoId, page, size) => {
       requestedPages.push(page);
       return page === 1
@@ -95,7 +96,7 @@ test("deduplicates license conflicts repeated across response pages", async () =
     projectLicense: "MIT",
     sbomLicense: "GPL-3.0",
   };
-  const client = {
+  const client: Pick<ScannerClient, "getLicenses"> = {
     getLicenses: async (_repoId, page) => ({
       totalPages: 2,
       sbomLicense: [{ name: `component-${page}`, isRisk: false }],

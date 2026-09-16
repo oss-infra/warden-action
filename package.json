@@ -5,13 +5,16 @@
   "private": true,
   "main": "dist/index.js",
   "bin": {
-    "warden": "src/cli.js"
+    "warden": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "ncc build src/action.js -o dist --minify --source-map",
-    "check": "npm run test && npm run build",
-    "test": "node --test",
-    "warden": "node src/cli.js"
+    "build": "pnpm build:action && pnpm build:cli",
+    "build:action": "ncc build src/action.ts -o dist --minify --source-map",
+    "build:cli": "ncc build src/cli.ts -o dist/cli --minify --source-map",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "warden": "tsx src/cli.ts"
   },
   "engines": {
     "node": ">=24"
@@ -22,7 +25,10 @@
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
-    "@vercel/ncc": "^0.45.0"
+    "@types/node": "^24.0.0",
+    "@vercel/ncc": "^0.45.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
   },
   "license": "MIT"
 }

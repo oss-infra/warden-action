@@ -1,8 +1,6 @@
-"use strict";
-
-const assert = require("node:assert/strict");
-const test = require("node:test");
-const { structuredReport } = require("../src/format");
+import assert from "node:assert/strict";
+import test from "node:test";
+import { structuredReport } from "../src/format";
 
 test("builds a stable structured report for downstream integrations", () => {
   const vulnerability = { id: 1, rank: "高危" };
