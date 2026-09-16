@@ -13,7 +13,10 @@ type ReportResults = Pick<
   | "projectId"
   | "scanId"
   | "shareLink"
+  | "projectPackage"
+  | "licensePackage"
   | "vulnerabilities"
+  | "licenses"
 >;
 
 export function vulnerabilityMessage(item: Vulnerability): string {
@@ -48,7 +51,10 @@ export interface StructuredReport {
   scan: Pick<
     ScanResults,
     "status" | "projectName" | "projectId" | "scanId" | "shareLink"
-  >;
+  > & {
+    projectPackage: string;
+    licensePackage: string;
+  };
   result: "FAILED" | "PASSED";
   summary: {
     vulnerabilities: number;
@@ -58,6 +64,7 @@ export interface StructuredReport {
   };
   details: Omit<PolicyResult, "failed"> & {
     vulnerabilities: Vulnerability[];
+    licenses: ScanResults["licenses"];
   };
 }
 
@@ -79,6 +86,8 @@ export function structuredReport(
       projectId: results.projectId,
       scanId: results.scanId,
       shareLink: results.shareLink,
+      projectPackage: results.projectPackage,
+      licensePackage: results.licensePackage,
     },
     result: policy.failed ? "FAILED" : "PASSED",
     summary: {
@@ -89,6 +98,7 @@ export function structuredReport(
     },
     details: {
       vulnerabilities: results.vulnerabilities,
+      licenses: results.licenses,
       blockingVulnerabilities: policy.blockingVulnerabilities,
       licenseRisks: policy.licenseRisks,
       licenseConflicts: policy.licenseConflicts,

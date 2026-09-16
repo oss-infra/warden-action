@@ -18,7 +18,10 @@ test("builds a stable structured report for downstream integrations", () => {
       projectId: "project-1",
       scanId: "scan-1",
       shareLink: "https://example.test/report",
+      projectPackage: "JAVA(Maven)",
+      licensePackage: "maven",
       vulnerabilities: [vulnerability],
+      licenses: [licenseRisk],
     },
     {
       failed: true,
@@ -41,6 +44,8 @@ test("builds a stable structured report for downstream integrations", () => {
       projectId: "project-1",
       scanId: "scan-1",
       shareLink: "https://example.test/report",
+      projectPackage: "JAVA(Maven)",
+      licensePackage: "maven",
     },
     result: "FAILED",
     summary: {
@@ -51,6 +56,7 @@ test("builds a stable structured report for downstream integrations", () => {
     },
     details: {
       vulnerabilities: [vulnerability],
+      licenses: [licenseRisk],
       blockingVulnerabilities: [vulnerability],
       licenseRisks: [licenseRisk],
       licenseConflicts: [conflict],

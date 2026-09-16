@@ -35,6 +35,127 @@ test("uses the documented status endpoint and keeps the token out of the body", 
   assert.equal(request.options.body, undefined);
 });
 
+test("sends documented vulnerability filters and returns structured details", async () => {
+  let requestBody: unknown;
+  const client = new WardenApiClient({
+    token: "token",
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body ?? "null");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          code: 0,
+          message: "成功",
+          success: true,
+          data: {
+            currentPage: 1,
+            totalPages: 1,
+            totalElements: 1,
+            itemList: [
+              {
+                id: 123456,
+                rank: "严重",
+                cveNo: "CVE-2017-18349",
+                urgentlyFix: "是",
+                accuracyTag: "潜在可达",
+                directDepency: "直接依赖",
+                vulDependenceProofs: [
+                  {
+                    vulComponent: "com.alibaba:fastjson",
+                    vulCurrentVersion: "1.2.24",
+                    vulFixVersion: "1.2.25",
+                    vulUrgentlyFixVersion: "1.2.25",
+                    vulLineNum: 16,
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      };
+    },
+  });
+
+  const result = await client.getVulnerabilities("repo-1", 1, 300, {
+    rank: ["严重", "高危"],
+    status: ["待处置"],
+    urgentlyFix: "是",
+    accuracyTag: ["潜在可达"],
+    directDepency: "直接依赖",
+  });
+
+  assert.deepEqual(requestBody, {
+    repoId: "repo-1",
+    page: 1,
+    size: 300,
+    rank: ["严重", "高危"],
+    status: ["待处置"],
+    urgentlyFix: "是",
+    accuracyTag: ["潜在可达"],
+    directDepency: "直接依赖",
+  });
+  assert.equal(result.currentPage, 1);
+  assert.equal(result.totalElements, 1);
+  assert.equal(result.itemList?.[0]?.vulDependenceProofs?.[0]?.vulLineNum, 16);
+});
+
+test("returns documented status and license response fields", async () => {
+  const responses = [
+    {
+      code: 0,
+      success: true,
+      data: {
+        status: "扫描完成",
+        projectPackage: "JAVA(Maven)",
+        shareLink: "https://scanner.example/report",
+      },
+    },
+    {
+      code: 0,
+      success: true,
+      data: {
+        packageName: "maven",
+        sbomLicense: [
+          {
+            namespace: "javax.inject",
+            name: "javax.inject",
+            version: "1",
+            license: "Apache-2.0",
+            isRisk: false,
+          },
+        ],
+        projectLicenseConflict: [
+          {
+            projectLicense: "Apache-2.0",
+            sbomLicense: "CDDL-1.1",
+            explanation: "Copyleft conflict",
+          },
+        ],
+      },
+    },
+  ];
+  const client = new WardenApiClient({
+    token: "token",
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => responses.shift(),
+    }),
+  });
+
+  const status = await client.getStatus("scan-1");
+  const licenses = await client.getLicenses("repo-1", 1, 300);
+
+  assert.equal(status.projectPackage, "JAVA(Maven)");
+  assert.equal(licenses.packageName, "maven");
+  assert.equal(licenses.sbomLicense?.[0]?.license, "Apache-2.0");
+  assert.equal(
+    licenses.projectLicenseConflict?.[0]?.explanation,
+    "Copyleft conflict",
+  );
+});
+
 test("rejects an unsuccessful API envelope", async () => {
   const client = new WardenApiClient({
     token: "token",

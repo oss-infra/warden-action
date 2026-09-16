@@ -7,10 +7,24 @@ import type {
   ScannerClient,
   ScanResults,
   ScanStatus,
+  Vulnerability,
+  VulnerabilityStatus,
 } from "./types";
 
 export const COMPLETE_STATUS = "扫描完成";
 const FAILED_STATUS = "扫描失败";
+const EXCLUDED_VULNERABILITY_STATUSES = new Set<VulnerabilityStatus>([
+  "已修复",
+  "误报",
+  "忽略",
+]);
+
+export function isCountedVulnerability(item: Vulnerability): boolean {
+  return !(
+    item.status &&
+    EXCLUDED_VULNERABILITY_STATUSES.has(item.status as VulnerabilityStatus)
+  );
+}
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -77,12 +91,18 @@ export async function collectLicensePages(
   client: Pick<ScannerClient, "getLicenses">,
   repoId: string,
   pageSize = 300,
-): Promise<{ licenses: License[]; licenseConflicts: LicenseConflict[] }> {
+): Promise<{
+  licenses: License[];
+  licenseConflicts: LicenseConflict[];
+  licensePackage: string;
+}> {
   const licenses: License[] = [];
   const licenseConflicts: LicenseConflict[] = [];
   const seenConflicts = new Set<string>();
+  let licensePackage = "";
   for (let page = 1; ; page += 1) {
     const data = await client.getLicenses(repoId, page, pageSize);
+    licensePackage ||= data.packageName ?? data.package ?? "";
     const pageLicenses = data.sbomLicense ?? [];
     const pageConflicts = data.projectLicenseConflict ?? [];
     licenses.push(...pageLicenses);
@@ -102,7 +122,7 @@ export async function collectLicensePages(
     )
       break;
   }
-  return { licenses, licenseConflicts };
+  return { licenses, licenseConflicts, licensePackage };
 }
 
 interface WaitOptions {
@@ -179,18 +199,26 @@ export async function runScan(
 
   const results: Pick<
     ScanResults,
-    "vulnerabilities" | "licenses" | "licenseConflicts"
-  > = { vulnerabilities: [], licenses: [], licenseConflicts: [] };
+    "vulnerabilities" | "licenses" | "licenseConflicts" | "licensePackage"
+  > = {
+    vulnerabilities: [],
+    licenses: [],
+    licenseConflicts: [],
+    licensePackage: "",
+  };
   if (input.scanType === "security" || input.scanType === "all") {
-    results.vulnerabilities = await collectPages(
-      (page, size) => client.getVulnerabilities(projectId, page, size),
-      (data) => data.itemList ?? [],
-    );
+    results.vulnerabilities = (
+      await collectPages(
+        (page, size) => client.getVulnerabilities(projectId, page, size),
+        (data) => data.itemList ?? [],
+      )
+    ).filter(isCountedVulnerability);
   }
   if (input.scanType === "licenses" || input.scanType === "all") {
     const licenseData = await collectLicensePages(client, projectId);
     results.licenses = licenseData.licenses;
     results.licenseConflicts = licenseData.licenseConflicts;
+    results.licensePackage = licenseData.licensePackage;
   }
 
   return {
@@ -199,6 +227,7 @@ export async function runScan(
     projectId,
     scanId,
     status: status.status,
+    projectPackage: status.projectPackage ?? "",
     shareLink: status.shareLink ?? "",
   };
 }

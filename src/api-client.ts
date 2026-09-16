@@ -6,6 +6,7 @@ import type {
   ScanTask,
   ScannerClient,
   Vulnerability,
+  VulnerabilityQuery,
 } from "./types";
 
 const API_PREFIX = "/api/sca/open/v1/repo";
@@ -87,7 +88,7 @@ export class WardenApiError extends Error {
   }
 }
 
-interface ApiEnvelope<T> {
+export interface ApiEnvelope<T> {
   code: number;
   success: boolean;
   message?: string;
@@ -163,9 +164,10 @@ export class WardenApiClient implements ScannerClient {
     repoId: string,
     page: number,
     size: number,
+    filters: VulnerabilityQuery = {},
   ): Promise<PageData<Vulnerability>> {
     return this.request("POST", `${API_PREFIX}/vuls/detail`, {
-      body: { repoId, page, size },
+      body: { repoId, page, size, ...filters },
     });
   }
 
