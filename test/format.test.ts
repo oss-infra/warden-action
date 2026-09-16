@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { structuredReport } from "../src/format";
+import { licenseRiskMessage, structuredReport } from "../src/format";
+
+test("formats license risks for action annotations", () => {
+  assert.equal(
+    licenseRiskMessage({ name: "dotenv", version: "17.4.2", isRisk: "true" }),
+    "License risk: dotenv@17.4.2 | license=unknown",
+  );
+});
 
 test("builds a stable structured report for downstream integrations", () => {
   const vulnerability = { id: 1, rank: "高危" };

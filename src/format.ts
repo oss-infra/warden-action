@@ -1,4 +1,5 @@
 import type {
+  License,
   PolicyResult,
   ScanConfig,
   ScanResults,
@@ -31,6 +32,11 @@ export function vulnerabilityMessage(item: Vulnerability): string {
     );
   if (proof?.vulFixVersion) details.push(`fix=${proof.vulFixVersion}`);
   return details.join(" | ");
+}
+
+export function licenseRiskMessage(item: License): string {
+  const component = `${item.name || "unknown"}@${item.version || "?"}`;
+  return `License risk: ${component} | license=${item.license || "unknown"}`;
 }
 
 export function summary(results: ReportResults, policy: PolicyResult): string {

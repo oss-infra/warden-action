@@ -49,6 +49,7 @@ jobs:
                   branch: ${{ inputs.branch }}
                   scan_type: ${{ inputs.scan_type || 'all' }}
                   fail_on_severity: high
+                  fail_on_license_risk: true
 
             - name: Save structured report
               if: always() && steps.warden.outputs.json != ''

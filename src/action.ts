@@ -1,5 +1,10 @@
 import { buildConfig } from "./config";
-import { structuredReport, summary, vulnerabilityMessage } from "./format";
+import {
+  licenseRiskMessage,
+  structuredReport,
+  summary,
+  vulnerabilityMessage,
+} from "./format";
 import { resolveGitHubTarget, type GitHubContext } from "./github-context";
 import { run } from "./run";
 
@@ -41,10 +46,15 @@ export async function main(): Promise<void> {
         core.error(message);
       else core.warning(message);
     }
+    for (const item of outcome.policy.licenseRisks.slice(0, 20)) {
+      const message = licenseRiskMessage(item);
+      if (config.failOnLicenseRisk) core.error(message);
+      else core.warning(message);
+    }
     for (const item of outcome.policy.licenseConflicts.slice(0, 20)) {
-      core.warning(
-        `License conflict: ${item.projectLicense || "?"} / ${item.sbomLicense || "?"}${item.explanation ? ` | ${item.explanation}` : ""}`,
-      );
+      const message = `License conflict: ${item.projectLicense || "?"} / ${item.sbomLicense || "?"}${item.explanation ? ` | ${item.explanation}` : ""}`;
+      if (config.failOnLicenseConflict) core.error(message);
+      else core.warning(message);
     }
 
     core.setOutput("result", outcome.policy.failed ? "FAILED" : "PASSED");
