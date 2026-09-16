@@ -74,12 +74,19 @@ async function collectPages(fetchPage, selectItems, pageSize = 300) {
 async function collectLicensePages(client, repoId, pageSize = 300) {
   const licenses = [];
   const licenseConflicts = [];
+  const seenConflicts = new Set();
   for (let page = 1; ; page += 1) {
     const data = await client.getLicenses(repoId, page, pageSize);
     const pageLicenses = data.sbomLicense || [];
     const pageConflicts = data.projectLicenseConflict || [];
     licenses.push(...pageLicenses);
-    licenseConflicts.push(...pageConflicts);
+    for (const conflict of pageConflicts) {
+      const key = JSON.stringify(conflict);
+      if (!seenConflicts.has(key)) {
+        seenConflicts.add(key);
+        licenseConflicts.push(conflict);
+      }
+    }
     const hasTotalPages = Number.isFinite(Number(data.totalPages));
     const pageIsShort =
       pageLicenses.length < pageSize && pageConflicts.length < pageSize;

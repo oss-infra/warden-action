@@ -44,3 +44,32 @@ test("rejects an unsuccessful API envelope", async () => {
     /POST \/api\/sca\/open\/v1\/repo\/scan\/git: bad request/,
   );
 });
+
+test("debug logging includes request details without exposing the token", async () => {
+  const messages = [];
+  const client = new WardenApiClient({
+    token: "secret-token",
+    baseUrl: "https://scanner.example",
+    debug: true,
+    logger: (message) => messages.push(message),
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        code: 0,
+        success: true,
+        data: { itemList: [{ id: 1 }], totalPages: 1 },
+      }),
+    }),
+  });
+
+  await client.getVulnerabilities("repo-1", 2, 300);
+
+  assert.match(
+    messages[0],
+    /POST https:\/\/scanner\.example\/api\/sca\/open\/v1\/repo\/vuls\/detail/,
+  );
+  assert.match(messages[0], /"page":2/);
+  assert.match(messages[1], /itemList=1/);
+  assert.doesNotMatch(messages.join("\n"), /secret-token/);
+});

@@ -14,6 +14,20 @@ on:
                 required: false
                 default: main
                 type: string
+            scan_type:
+                description: Scan type
+                required: false
+                default: all
+                type: choice
+                options:
+                    - all
+                    - security
+                    - licenses
+            debug:
+                description: Log redacted API request diagnostics
+                required: false
+                default: false
+                type: boolean
 
 permissions:
     contents: read
@@ -29,10 +43,11 @@ jobs:
               id: warden
               uses: ./
               with:
+                  debug: ${{ inputs.debug }}
                   token: ${{ secrets.YUANXI_TOKEN }}
                   repository: ${{ inputs.repository }}
                   branch: ${{ inputs.branch }}
-                  scan_type: all
+                  scan_type: ${{ inputs.scan_type || 'all' }}
                   fail_on_severity: high
 
             - name: Save structured report

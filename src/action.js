@@ -26,6 +26,7 @@ async function main() {
       timeoutSeconds: core.getInput("timeout_seconds"),
       pollIntervalSeconds: core.getInput("poll_interval_seconds"),
       baseUrl: core.getInput("api_base_url"),
+      debug: core.getInput("debug"),
     });
     core.setSecret(config.token);
     core.info(
@@ -33,6 +34,7 @@ async function main() {
     );
     const outcome = await run(config, {
       onStatus: (status) => core.info(`Scan status: ${status}`),
+      onDebug: (message) => core.info(`[debug] ${message}`),
     });
 
     for (const item of outcome.results.vulnerabilities.slice(0, 20)) {

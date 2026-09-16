@@ -42,6 +42,10 @@ inputs:
     description: Yuanxi API base URL
     required: false
     default: https://cybersec.antgroup.com
+  debug:
+    description: Log request URLs, parameters, and response counts with the token redacted
+    required: false
+    default: "false"
 outputs:
   result:
     description: PASSED or FAILED

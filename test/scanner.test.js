@@ -87,6 +87,28 @@ test("paginates license responses when totalPages is omitted", async () => {
   assert.equal(result.licenseConflicts.length, 1);
 });
 
+test("deduplicates license conflicts repeated across response pages", async () => {
+  const conflict = {
+    namespace: "npm",
+    name: "example",
+    version: "1.0.0",
+    projectLicense: "MIT",
+    sbomLicense: "GPL-3.0",
+  };
+  const client = {
+    getLicenses: async (_repoId, page) => ({
+      totalPages: 2,
+      sbomLicense: [{ name: `component-${page}`, isRisk: false }],
+      projectLicenseConflict: [conflict],
+    }),
+  };
+
+  const result = await collectLicensePages(client, "repo-1", 1);
+
+  assert.equal(result.licenses.length, 2);
+  assert.deepEqual(result.licenseConflicts, [conflict]);
+});
+
 test("generated project names are stable and fit the API limit", () => {
   const name = makeProjectName(
     "https://github.com/acme/a-very-long-repository-name.git",

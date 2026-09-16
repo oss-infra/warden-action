@@ -97,8 +97,11 @@ on:
 | `timeout_seconds`          | no       | `1200`                          | Scan timeout                                              |
 | `poll_interval_seconds`    | no       | `10`                            | Status polling interval                                   |
 | `api_base_url`             | no       | `https://cybersec.antgroup.com` | Yuanxi API origin                                         |
+| `debug`                    | no       | `false`                         | Log redacted request parameters and response counts       |
 
 GitHub and Gitee HTTPS URLs are normalized to the `.git` form expected by Yuanxi. Explicit `repository`, `branch`, and `project_name` inputs override event-derived values.
+
+Set `debug: true` to log each API URL, request body, HTTP/envelope status, and paginated result counts. Access tokens are always replaced with `[REDACTED]`; full response items are not logged.
 
 ### Outputs
 

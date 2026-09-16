@@ -24,6 +24,7 @@ Options:
   --timeout-seconds <number>         default: 1200
   --poll-interval-seconds <number>   default: 10
   --api-base-url <url>               Yuanxi API origin
+  --debug                            Log request details with secrets redacted
   --json                             Print machine-readable JSON
   --help                             Show help
 `;
@@ -32,7 +33,7 @@ function parseArgs(argv) {
   const args = {};
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (argument === "--help" || argument === "--json") {
+    if (["--help", "--json", "--debug"].includes(argument)) {
       args[argument.slice(2)] = true;
       continue;
     }
@@ -77,9 +78,11 @@ async function main(argv = process.argv.slice(2)) {
     timeoutSeconds: args["timeout-seconds"],
     pollIntervalSeconds: args["poll-interval-seconds"],
     baseUrl: args["api-base-url"],
+    debug: args.debug,
   });
   const outcome = await run(config, {
     onStatus: (status) => console.error(`Scan status: ${status}`),
+    onDebug: (message) => console.error(`[debug] ${message}`),
   });
   if (args.json) {
     process.stdout.write(

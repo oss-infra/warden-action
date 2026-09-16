@@ -27,6 +27,7 @@ function buildConfig(values) {
     branch: values.branch,
     projectName: values.projectName || "",
     scanType: values.scanType || "all",
+    debug: parseBoolean(values.debug, "debug"),
     failOnSeverity: values.failOnSeverity || "high",
     failOnLicenseConflict:
       values.failOnLicenseConflict === undefined

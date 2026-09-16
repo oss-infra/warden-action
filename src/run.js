@@ -11,6 +11,8 @@ async function run(config, hooks = {}) {
       token: config.token,
       baseUrl: config.baseUrl,
       fetchImpl: hooks.fetchImpl,
+      debug: config.debug,
+      logger: hooks.onDebug,
     });
   const results = await runScan(client, config, hooks);
   const policy = evaluatePolicy(results, config);
