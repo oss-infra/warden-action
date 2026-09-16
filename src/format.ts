@@ -1,6 +1,22 @@
-"use strict";
+import type {
+  PolicyResult,
+  ScanConfig,
+  ScanResults,
+  Vulnerability,
+} from "./types";
 
-function vulnerabilityMessage(item) {
+type ReportConfig = Pick<ScanConfig, "repository" | "branch" | "scanType">;
+type ReportResults = Pick<
+  ScanResults,
+  | "status"
+  | "projectName"
+  | "projectId"
+  | "scanId"
+  | "shareLink"
+  | "vulnerabilities"
+>;
+
+export function vulnerabilityMessage(item: Vulnerability): string {
   const proof = item.vulDependenceProofs?.[0];
   const details = [
     item.subject || item.cveNo || `Vulnerability ${item.id}`,
@@ -14,7 +30,7 @@ function vulnerabilityMessage(item) {
   return details.join(" | ");
 }
 
-function summary(results, policy) {
+export function summary(results: ReportResults, policy: PolicyResult): string {
   return [
     `Result: ${policy.failed ? "FAILED" : "PASSED"}`,
     `Vulnerabilities: ${results.vulnerabilities.length} (${policy.blockingVulnerabilities.length} blocking)`,
@@ -22,11 +38,34 @@ function summary(results, policy) {
     `License conflicts: ${policy.licenseConflicts.length}`,
     results.shareLink ? `Report: ${results.shareLink}` : null,
   ]
-    .filter(Boolean)
+    .filter((line): line is string => line !== null)
     .join("\n");
 }
 
-function structuredReport(config, results, policy) {
+export interface StructuredReport {
+  schemaVersion: "1.0";
+  target: ReportConfig;
+  scan: Pick<
+    ScanResults,
+    "status" | "projectName" | "projectId" | "scanId" | "shareLink"
+  >;
+  result: "FAILED" | "PASSED";
+  summary: {
+    vulnerabilities: number;
+    blockingVulnerabilities: number;
+    licenseRisks: number;
+    licenseConflicts: number;
+  };
+  details: Omit<PolicyResult, "failed"> & {
+    vulnerabilities: Vulnerability[];
+  };
+}
+
+export function structuredReport(
+  config: ReportConfig,
+  results: ReportResults,
+  policy: PolicyResult,
+): StructuredReport {
   return {
     schemaVersion: "1.0",
     target: {
@@ -56,5 +95,3 @@ function structuredReport(config, results, policy) {
     },
   };
 }
-
-module.exports = { structuredReport, summary, vulnerabilityMessage };

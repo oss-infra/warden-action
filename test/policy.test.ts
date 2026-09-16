@@ -1,8 +1,6 @@
-"use strict";
-
-const assert = require("node:assert/strict");
-const test = require("node:test");
-const { evaluatePolicy } = require("../src/policy");
+import assert from "node:assert/strict";
+import test from "node:test";
+import { evaluatePolicy } from "../src/policy";
 
 test("fails at the configured vulnerability threshold", () => {
   const results = {

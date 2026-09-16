@@ -1,19 +1,17 @@
-"use strict";
+import { buildConfig } from "./config";
+import { structuredReport, summary, vulnerabilityMessage } from "./format";
+import { resolveGitHubTarget, type GitHubContext } from "./github-context";
+import { run } from "./run";
 
-const { buildConfig } = require("./config");
-const { structuredReport, summary, vulnerabilityMessage } = require("./format");
-const { resolveGitHubTarget } = require("./github-context");
-const { run } = require("./run");
-
-function githubDefaults(context) {
+export function githubDefaults(context: GitHubContext) {
   return resolveGitHubTarget(context);
 }
 
-async function main() {
+export async function main(): Promise<void> {
   const core = await import("@actions/core");
   const github = await import("@actions/github");
   try {
-    const defaults = githubDefaults(github.context);
+    const defaults = githubDefaults(github.context as GitHubContext);
     const config = buildConfig({
       token: core.getInput("token", { required: true }),
       scanType: core.getInput("scan_type"),
@@ -71,6 +69,4 @@ async function main() {
   }
 }
 
-main();
-
-module.exports = { githubDefaults, main };
+void main();

@@ -1,24 +1,22 @@
-"use strict";
+import crypto from "node:crypto";
+import type {
+  License,
+  LicenseConflict,
+  PageData,
+  ScanConfig,
+  ScannerClient,
+  ScanResults,
+  ScanStatus,
+} from "./types";
 
-const crypto = require("node:crypto");
-
-const COMPLETE_STATUS = "扫描完成";
+export const COMPLETE_STATUS = "扫描完成";
 const FAILED_STATUS = "扫描失败";
 
-function sleep(milliseconds) {
+function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function normalizeScanType(value = "all") {
-  const aliases = { stc: "security", sca: "licenses" };
-  const normalized = aliases[value] || value;
-  if (!["security", "licenses", "all"].includes(normalized)) {
-    throw new Error(`Invalid scan type: ${value}`);
-  }
-  return normalized;
-}
-
-function normalizeRepository(repository) {
+export function normalizeRepository(repository: string): string {
   const value = repository.trim().replace(/\/$/, "");
   if (
     /^https?:\/\/(?:www\.)?(?:github\.com|gitee\.com)\//i.test(value) &&
@@ -29,7 +27,7 @@ function normalizeRepository(repository) {
   return value;
 }
 
-function makeProjectName(repository, branch) {
+export function makeProjectName(repository: string, branch: string): string {
   const repositoryName =
     repository
       .replace(/\.git$/, "")
@@ -48,18 +46,22 @@ function makeProjectName(repository, branch) {
   return `${readable.slice(0, 22)}-${hash}`;
 }
 
-function validateProjectName(projectName) {
+export function validateProjectName(projectName: string): string {
   const length = Array.from(projectName).length;
   if (length < 1 || length > 30)
     throw new Error("project-name must contain 1 to 30 characters");
   return projectName;
 }
 
-async function collectPages(fetchPage, selectItems, pageSize = 300) {
-  const items = [];
+export async function collectPages<T>(
+  fetchPage: (page: number, size: number) => Promise<PageData<T>>,
+  selectItems: (data: PageData<T>) => T[],
+  pageSize = 300,
+): Promise<T[]> {
+  const items: T[] = [];
   for (let page = 1; ; page += 1) {
     const data = await fetchPage(page, pageSize);
-    const pageItems = selectItems(data) || [];
+    const pageItems = selectItems(data);
     items.push(...pageItems);
     const hasTotalPages = Number.isFinite(Number(data.totalPages));
     if (
@@ -71,14 +73,18 @@ async function collectPages(fetchPage, selectItems, pageSize = 300) {
   return items;
 }
 
-async function collectLicensePages(client, repoId, pageSize = 300) {
-  const licenses = [];
-  const licenseConflicts = [];
-  const seenConflicts = new Set();
+export async function collectLicensePages(
+  client: Pick<ScannerClient, "getLicenses">,
+  repoId: string,
+  pageSize = 300,
+): Promise<{ licenses: License[]; licenseConflicts: LicenseConflict[] }> {
+  const licenses: License[] = [];
+  const licenseConflicts: LicenseConflict[] = [];
+  const seenConflicts = new Set<string>();
   for (let page = 1; ; page += 1) {
     const data = await client.getLicenses(repoId, page, pageSize);
-    const pageLicenses = data.sbomLicense || [];
-    const pageConflicts = data.projectLicenseConflict || [];
+    const pageLicenses = data.sbomLicense ?? [];
+    const pageConflicts = data.projectLicenseConflict ?? [];
     licenses.push(...pageLicenses);
     for (const conflict of pageConflicts) {
       const key = JSON.stringify(conflict);
@@ -99,28 +105,57 @@ async function collectLicensePages(client, repoId, pageSize = 300) {
   return { licenses, licenseConflicts };
 }
 
-async function waitForScan(client, scanId, options) {
+interface WaitOptions {
+  timeoutMs: number;
+  pollIntervalMs: number;
+  sleep: (milliseconds: number) => Promise<void>;
+  onStatus?: (status: string) => void;
+}
+
+export async function waitForScan(
+  client: Pick<ScannerClient, "getStatus">,
+  scanId: string,
+  options: WaitOptions,
+): Promise<ScanStatus> {
   const startedAt = Date.now();
-  let statusData;
+  let statusData: ScanStatus | undefined;
   while (Date.now() - startedAt <= options.timeoutMs) {
     statusData = await client.getStatus(scanId);
     options.onStatus?.(statusData.status);
     if (statusData.status === COMPLETE_STATUS) return statusData;
     if (
       statusData.status === FAILED_STATUS ||
-      String(statusData.status).includes("失败")
+      statusData.status.includes("失败")
     ) {
       throw new Error(`Scan failed: ${statusData.status}`);
     }
     await options.sleep(options.pollIntervalMs);
   }
   throw new Error(
-    `Scan timed out after ${Math.ceil(options.timeoutMs / 1000)} seconds (last status: ${statusData?.status || "unknown"})`,
+    `Scan timed out after ${Math.ceil(options.timeoutMs / 1000)} seconds (last status: ${statusData?.status ?? "unknown"})`,
   );
 }
 
-async function runScan(client, input, hooks = {}) {
-  const scanType = normalizeScanType(input.scanType);
+export type ScanInput = Pick<
+  ScanConfig,
+  | "repository"
+  | "branch"
+  | "projectName"
+  | "scanType"
+  | "timeoutMs"
+  | "pollIntervalMs"
+>;
+
+interface ScanHooks {
+  sleep?: (milliseconds: number) => Promise<void>;
+  onStatus?: (status: string) => void;
+}
+
+export async function runScan(
+  client: ScannerClient,
+  input: ScanInput,
+  hooks: ScanHooks = {},
+): Promise<ScanResults> {
   const repository = normalizeRepository(input.repository);
   const projectName = validateProjectName(
     input.projectName || makeProjectName(repository, input.branch),
@@ -130,25 +165,30 @@ async function runScan(client, input, hooks = {}) {
     repository,
     branch: input.branch,
   });
-  if (!task?.scanId || !task?.projectId)
+  if (!task.scanId || !task.projectId)
     throw new Error("Yuanxi did not return scanId and projectId");
+  const scanId = task.scanId;
+  const projectId = task.projectId;
 
-  const status = await waitForScan(client, task.scanId, {
+  const status = await waitForScan(client, scanId, {
     timeoutMs: input.timeoutMs,
     pollIntervalMs: input.pollIntervalMs,
-    sleep: hooks.sleep || sleep,
-    onStatus: hooks.onStatus,
+    sleep: hooks.sleep ?? sleep,
+    ...(hooks.onStatus ? { onStatus: hooks.onStatus } : {}),
   });
 
-  const results = { vulnerabilities: [], licenses: [], licenseConflicts: [] };
-  if (scanType === "security" || scanType === "all") {
+  const results: Pick<
+    ScanResults,
+    "vulnerabilities" | "licenses" | "licenseConflicts"
+  > = { vulnerabilities: [], licenses: [], licenseConflicts: [] };
+  if (input.scanType === "security" || input.scanType === "all") {
     results.vulnerabilities = await collectPages(
-      (page, size) => client.getVulnerabilities(task.projectId, page, size),
-      (data) => data.itemList,
+      (page, size) => client.getVulnerabilities(projectId, page, size),
+      (data) => data.itemList ?? [],
     );
   }
-  if (scanType === "licenses" || scanType === "all") {
-    const licenseData = await collectLicensePages(client, task.projectId);
+  if (input.scanType === "licenses" || input.scanType === "all") {
+    const licenseData = await collectLicensePages(client, projectId);
     results.licenses = licenseData.licenses;
     results.licenseConflicts = licenseData.licenseConflicts;
   }
@@ -156,21 +196,9 @@ async function runScan(client, input, hooks = {}) {
   return {
     ...results,
     projectName,
-    projectId: task.projectId,
-    scanId: task.scanId,
+    projectId,
+    scanId,
     status: status.status,
-    shareLink: status.shareLink || "",
+    shareLink: status.shareLink ?? "",
   };
 }
-
-module.exports = {
-  COMPLETE_STATUS,
-  collectLicensePages,
-  collectPages,
-  makeProjectName,
-  normalizeRepository,
-  normalizeScanType,
-  runScan,
-  validateProjectName,
-  waitForScan,
-};
