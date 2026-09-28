@@ -1,5 +1,6 @@
 import type {
   License,
+  LicenseConflict,
   PolicyResult,
   ScanConfig,
   ScanResults,
@@ -20,6 +21,12 @@ type ReportResults = Pick<
   | "licenses"
 >;
 
+export type ResultLabel = "FAILED" | "PASSED";
+
+export function resultLabel(policy: Pick<PolicyResult, "failed">): ResultLabel {
+  return policy.failed ? "FAILED" : "PASSED";
+}
+
 export function vulnerabilityMessage(item: Vulnerability): string {
   const proof = item.vulDependenceProofs?.[0];
   const details = [
@@ -39,9 +46,14 @@ export function licenseRiskMessage(item: License): string {
   return `License risk: ${component} | license=${item.license || "unknown"}`;
 }
 
+export function licenseConflictMessage(item: LicenseConflict): string {
+  const message = `License conflict: ${item.projectLicense || "?"} / ${item.sbomLicense || "?"}`;
+  return item.explanation ? `${message} | ${item.explanation}` : message;
+}
+
 export function summary(results: ReportResults, policy: PolicyResult): string {
   return [
-    `Result: ${policy.failed ? "FAILED" : "PASSED"}`,
+    `Result: ${resultLabel(policy)}`,
     `Vulnerabilities: ${results.vulnerabilities.length} (${policy.blockingVulnerabilities.length} blocking)`,
     `License risks: ${policy.licenseRisks.length}`,
     `License conflicts: ${policy.licenseConflicts.length}`,
@@ -61,7 +73,7 @@ export interface StructuredReport {
     projectPackage: string;
     licensePackage: string;
   };
-  result: "FAILED" | "PASSED";
+  result: ResultLabel;
   summary: {
     vulnerabilities: number;
     blockingVulnerabilities: number;
@@ -95,7 +107,7 @@ export function structuredReport(
       projectPackage: results.projectPackage,
       licensePackage: results.licensePackage,
     },
-    result: policy.failed ? "FAILED" : "PASSED",
+    result: resultLabel(policy),
     summary: {
       vulnerabilities: results.vulnerabilities.length,
       blockingVulnerabilities: policy.blockingVulnerabilities.length,

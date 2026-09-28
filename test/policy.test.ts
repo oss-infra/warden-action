@@ -28,3 +28,19 @@ test("can disable vulnerability failure and fail on license policy", () => {
   assert.equal(policy.blockingVulnerabilities.length, 0);
   assert.equal(policy.licenseRisks.length, 1);
 });
+
+test("matches English ranks case-insensitively and never treats none as a rank", () => {
+  const results = {
+    vulnerabilities: [{ rank: "High" }, { rank: "none" }],
+    licenses: [],
+    licenseConflicts: [],
+  };
+  assert.deepEqual(
+    evaluatePolicy(results, { failOnSeverity: "high" }).blockingVulnerabilities,
+    [{ rank: "High" }],
+  );
+  assert.equal(
+    evaluatePolicy(results, { failOnSeverity: "none" }).failed,
+    false,
+  );
+});

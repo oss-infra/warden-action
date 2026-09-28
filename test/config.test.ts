@@ -44,3 +44,33 @@ test("normalizeScanType supports documented aliases", () => {
   assert.equal(normalizeScanType("stc"), "security");
   assert.equal(normalizeScanType("sca"), "licenses");
 });
+
+test("parseBoolean falls back to the default for blank values", () => {
+  assert.equal(parseBoolean("", "enforce-policy", true), true);
+  assert.equal(parseBoolean(" FALSE ", "enforce-policy", true), false);
+  const config = buildConfig({
+    token: "token",
+    repository: "https://github.com/acme/project.git",
+    branch: "main",
+    failOnLicenseConflict: "",
+    scanType: "",
+  });
+  assert.equal(config.failOnLicenseConflict, true);
+  assert.equal(config.scanType, "all");
+});
+
+test("buildConfig validates the severity threshold before scanning", () => {
+  const base = {
+    token: "token",
+    repository: "https://github.com/acme/project.git",
+    branch: "main",
+  };
+  assert.equal(
+    buildConfig({ ...base, failOnSeverity: "Critical" }).failOnSeverity,
+    "critical",
+  );
+  assert.throws(
+    () => buildConfig({ ...base, failOnSeverity: "severe" }),
+    /Invalid fail-on severity/,
+  );
+});

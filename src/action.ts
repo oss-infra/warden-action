@@ -1,31 +1,48 @@
 import { buildConfig, parseBoolean } from "./config";
 import {
+  licenseConflictMessage,
   licenseRiskMessage,
+  resultLabel,
   structuredReport,
   summary,
   vulnerabilityMessage,
 } from "./format";
-import { resolveGitHubTarget, type GitHubContext } from "./github-context";
+import { resolveGitHubTarget, type GitHubTarget } from "./github-context";
+import { severityScore } from "./policy";
 import { run } from "./run";
 
-export function githubDefaults(context: GitHubContext) {
-  return resolveGitHubTarget(context);
-}
+// GitHub shows only a limited number of annotations per step.
+const MAX_ANNOTATIONS = 20;
 
 export async function main(): Promise<void> {
   const core = await import("@actions/core");
   const github = await import("@actions/github");
   try {
-    const defaults = githubDefaults(github.context as GitHubContext);
+    const repositoryInput = core.getInput("repository");
+    const branchInput = core.getInput("branch");
+    // Explicit inputs make the action usable on events without a branch (tags, schedule).
+    const defaults: Partial<GitHubTarget> =
+      repositoryInput && branchInput
+        ? {}
+        : resolveGitHubTarget({
+            eventName: github.context.eventName,
+            ref: github.context.ref,
+            serverUrl: github.context.serverUrl,
+            payload: github.context.payload,
+            ...(process.env.GITHUB_REPOSITORY
+              ? { repositoryName: process.env.GITHUB_REPOSITORY }
+              : {}),
+          });
     const enforcePolicy = parseBoolean(
       core.getInput("enforce_policy"),
       "enforce-policy",
+      true,
     );
     const config = buildConfig({
       token: core.getInput("token", { required: true }),
       scanType: core.getInput("scan_type"),
-      repository: core.getInput("repository") || defaults.repository,
-      branch: core.getInput("branch") || defaults.branch,
+      repository: repositoryInput || defaults.repository,
+      branch: branchInput || defaults.branch,
       projectName: core.getInput("project_name"),
       failOnSeverity: core.getInput("fail_on_severity"),
       failOnLicenseConflict: core.getInput("fail_on_license_conflict"),
@@ -39,47 +56,38 @@ export async function main(): Promise<void> {
     core.info(
       `Starting ${config.scanType} scan for ${config.repository}#${config.branch}`,
     );
-    const outcome = await run(config, {
+    const { results, policy } = await run(config, {
       onStatus: (status) => core.info(`Scan status: ${status}`),
       onDebug: (message) => core.info(`[debug] ${message}`),
     });
 
-    for (const item of outcome.results.vulnerabilities.slice(0, 20)) {
-      const message = vulnerabilityMessage(item);
-      if (
-        enforcePolicy &&
-        outcome.policy.blockingVulnerabilities.includes(item)
-      )
-        core.error(message);
-      else core.warning(message);
-    }
-    for (const item of outcome.policy.licenseRisks.slice(0, 20)) {
-      const message = licenseRiskMessage(item);
-      if (enforcePolicy && config.failOnLicenseRisk) core.error(message);
-      else core.warning(message);
-    }
-    for (const item of outcome.policy.licenseConflicts.slice(0, 20)) {
-      const message = `License conflict: ${item.projectLicense || "?"} / ${item.sbomLicense || "?"}${item.explanation ? ` | ${item.explanation}` : ""}`;
-      if (enforcePolicy && config.failOnLicenseConflict) core.error(message);
-      else core.warning(message);
-    }
+    const annotate = (message: string, blocking: boolean) =>
+      enforcePolicy && blocking ? core.error(message) : core.warning(message);
+    const blocking = new Set(policy.blockingVulnerabilities);
+    const bySeverity = [...results.vulnerabilities].sort(
+      (a, b) => severityScore(b) - severityScore(a),
+    );
+    for (const item of bySeverity.slice(0, MAX_ANNOTATIONS))
+      annotate(vulnerabilityMessage(item), blocking.has(item));
+    for (const item of policy.licenseRisks.slice(0, MAX_ANNOTATIONS))
+      annotate(licenseRiskMessage(item), config.failOnLicenseRisk);
+    for (const item of policy.licenseConflicts.slice(0, MAX_ANNOTATIONS))
+      annotate(licenseConflictMessage(item), config.failOnLicenseConflict);
 
-    core.setOutput("result", outcome.policy.failed ? "FAILED" : "PASSED");
-    core.setOutput("status", outcome.results.status);
-    core.setOutput("project_id", outcome.results.projectId);
-    core.setOutput("scan_id", outcome.results.scanId);
-    core.setOutput("share_link", outcome.results.shareLink);
-    core.setOutput("vulnerabilities", outcome.results.vulnerabilities.length);
-    core.setOutput("license_risks", outcome.policy.licenseRisks.length);
-    core.setOutput("license_conflicts", outcome.policy.licenseConflicts.length);
+    core.setOutput("result", resultLabel(policy));
+    core.setOutput("status", results.status);
+    core.setOutput("project_id", results.projectId);
+    core.setOutput("scan_id", results.scanId);
+    core.setOutput("share_link", results.shareLink);
+    core.setOutput("vulnerabilities", results.vulnerabilities.length);
+    core.setOutput("license_risks", policy.licenseRisks.length);
+    core.setOutput("license_conflicts", policy.licenseConflicts.length);
     core.setOutput(
       "json",
-      JSON.stringify(structuredReport(config, outcome.results, outcome.policy)),
+      JSON.stringify(structuredReport(config, results, policy)),
     );
-    await core.summary
-      .addCodeBlock(summary(outcome.results, outcome.policy))
-      .write();
-    if (enforcePolicy && outcome.policy.failed)
+    await core.summary.addCodeBlock(summary(results, policy)).write();
+    if (enforcePolicy && policy.failed)
       core.setFailed("Warden policy check failed");
   } catch (error) {
     core.setOutput("result", "FAILED");

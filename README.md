@@ -2,38 +2,50 @@
 
 [简体中文](README_CN.md)
 
-`warden-action` runs repository security and open-source license checks through the [Yuanxi security analysis platform](https://cybersec.antgroup.com/). It is available as both a GitHub Action and a Node.js CLI.
+`warden-action` checks a public GitHub or Gitee repository for vulnerable dependencies and open-source license problems using the [Yuanxi security analysis platform](https://cybersec.antgroup.com/). You can run it as a **GitHub Action** or as a **Node.js CLI**.
 
-## What It Does
+It sends only the repository URL and branch to Yuanxi. It does not upload local files and never runs repository code.
 
-Yuanxi provides open security infrastructure backed by program analysis technology. Its YASA engine describes unified multi-language analysis using UAST, data-flow, pointer, and taint analysis.
+## Contents
 
-This project integrates the currently documented Yuanxi repository APIs and provides:
+- [How It Works](#how-it-works)
+- [Quick Start](#quick-start)
+- [GitHub Action](#github-action)
+- [Failure Policy](#failure-policy)
+- [JSON Report](#json-report)
+- [CLI](#cli)
+- [Security Notes](#security-notes)
+- [Development](#development)
 
-- vulnerability and dependency-path results;
-- reachability and remediation information returned by Yuanxi;
-- component license risks and project license conflicts;
-- configurable CI failure policies;
-- pull request, push, and local Git checkout workflows.
+## How It Works
 
-The scanner accepts public GitHub or Gitee repository URLs. It submits a repository and branch to Yuanxi; it does not upload local files or execute repository code.
+```mermaid
+flowchart LR
+  A[Resolve repository + branch] --> B[Create Yuanxi scan]
+  B --> C[Poll status until done]
+  C --> D[Fetch vulnerabilities and licenses]
+  D --> E[Evaluate policy]
+  E --> F[Annotations, outputs, summary, exit code]
+```
 
-## GitHub Action
+1. **Resolve the target.** Uses explicit inputs, or the GitHub event, or the local Git checkout (CLI).
+2. **Scan.** Submits the repository to Yuanxi and polls until the scan completes, fails, or times out.
+3. **Collect results.** Fetches every page of vulnerabilities and license data. Vulnerabilities already marked as fixed (`已修复`), false positive (`误报`), or ignored (`忽略`) are left out.
+4. **Evaluate the policy.** Decides `PASSED` or `FAILED` from your thresholds.
 
-Create an access token in **Yuanxi > Team management > Access tokens**, then save it as the GitHub repository secret `YUANXI_TOKEN`.
+## Quick Start
 
-### Pull Requests
-
-For `pull_request` and `pull_request_target`, the Action scans the source repository and source branch from `pull_request.head`. It does not scan the base branch or GitHub's temporary merge ref.
-
-Use `pull_request` for branches in the same repository:
+1. In **Yuanxi > Team management > Access tokens**, create a token.
+2. Save it as the GitHub repository secret `YUANXI_TOKEN`.
+3. Add a workflow:
 
 ```yaml
 name: Warden
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
 
 jobs:
   scan:
@@ -42,16 +54,33 @@ jobs:
       - uses: oss-infra/warden-action@main
         with:
           token: ${{ secrets.YUANXI_TOKEN }}
-          scan_type: all
-          fail_on_severity: high
-          fail_on_license_conflict: true
 ```
 
-GitHub does not expose repository secrets to fork-based `pull_request` workflows. To scan public fork pull requests, use `pull_request_target`:
+You do not need `actions/checkout`, because the scan runs remotely on Yuanxi.
+
+> [!NOTE]
+> These examples use `@main`. Once a `v1` tag is published, pin to `oss-infra/warden-action@v1`.
+
+## GitHub Action
+
+### Scan Target
+
+If you set both `repository` and `branch`, the Action uses them as-is and works with any event. If you don't, it works them out from the event:
+
+| Event                                   | Repository                  | Branch                     |
+| --------------------------------------- | --------------------------- | -------------------------- |
+| `pull_request`, `pull_request_target`   | PR head (source) repository | PR head (source) branch    |
+| `push`, `workflow_dispatch`, `schedule` | Event repository            | Branch from `refs/heads/*` |
+
+Pull requests are scanned from their source branch, not the base branch or GitHub's temporary merge ref. Tag pushes do not point to a branch, so set `branch` explicitly for them.
+
+GitHub and Gitee HTTPS URLs get a `.git` suffix if they don't already have one, because Yuanxi expects it.
+
+### Fork Pull Requests
+
+GitHub does not give repository secrets to `pull_request` workflows triggered from forks. To scan public fork PRs, use `pull_request_target`:
 
 ```yaml
-name: Warden
-
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
@@ -66,94 +95,151 @@ jobs:
       - uses: oss-infra/warden-action@main
         with:
           token: ${{ secrets.YUANXI_TOKEN }}
-          scan_type: all
 ```
 
 > [!WARNING]
-> This Action does not check out or execute pull request code. When using `pull_request_target`, do not add steps that execute untrusted pull request code in the same job.
-
-### Pushes
-
-For a push event, the Action scans the event repository and pushed branch:
-
-```yaml
-on:
-  push:
-    branches: [main]
-```
+> This Action never checks out or runs pull request code. When you use `pull_request_target`, don't add steps to the same job that check out or run untrusted PR code.
 
 ### Inputs
 
-| Input                      | Required | Default                         | Description                                               |
-| -------------------------- | -------- | ------------------------------- | --------------------------------------------------------- |
-| `token`                    | yes      |                                 | Yuanxi access token                                       |
-| `scan_type`                | no       | `all`                           | `security`, `licenses`, or `all`; aliases: `stc`, `sca`   |
-| `repository`               | no       | event repository                | Public Git repository URL                                 |
-| `branch`                   | no       | event branch                    | Branch to scan                                            |
-| `project_name`             | no       | generated                       | Stable Yuanxi project name, 1-30 characters               |
-| `fail_on_severity`         | no       | `high`                          | `warning`, `low`, `medium`, `high`, `critical`, or `none` |
-| `fail_on_license_conflict` | no       | `true`                          | Fail on project/component license conflicts               |
-| `fail_on_license_risk`     | no       | `false`                         | Fail on components marked as license risks                |
-| `enforce_policy`           | no       | `true`                          | Fail job on findings; `false` enables review mode         |
-| `timeout_seconds`          | no       | `1200`                          | Scan timeout                                              |
-| `poll_interval_seconds`    | no       | `10`                            | Status polling interval                                   |
-| `api_base_url`             | no       | `https://cybersec.antgroup.com` | Yuanxi API origin                                         |
-| `debug`                    | no       | `false`                         | Log redacted requests and complete response payloads      |
+| Input                      | Default                         | Description                                                                      |
+| -------------------------- | ------------------------------- | -------------------------------------------------------------------------------- |
+| `token`                    | **required**                    | Yuanxi access token                                                              |
+| `scan_type`                | `all`                           | `security`, `licenses`, or `all` (aliases: `stc` = security, `sca` = licenses)   |
+| `repository`               | from event                      | Public GitHub/Gitee repository URL                                               |
+| `branch`                   | from event                      | Branch to scan                                                                   |
+| `project_name`             | generated                       | Stable Yuanxi project name, 1-30 characters                                      |
+| `fail_on_severity`         | `high`                          | Lowest blocking severity: `warning`, `low`, `medium`, `high`, `critical`, `none` |
+| `fail_on_license_conflict` | `true`                          | Fail when the project license conflicts with a component license                 |
+| `fail_on_license_risk`     | `false`                         | Fail when a component license is flagged as risky                                |
+| `enforce_policy`           | `true`                          | `false` = review mode: report findings as warnings without failing the job       |
+| `timeout_seconds`          | `1200`                          | Maximum time to wait for the scan                                                |
+| `poll_interval_seconds`    | `10`                            | Delay between status checks                                                      |
+| `api_base_url`             | `https://cybersec.antgroup.com` | Yuanxi API origin                                                                |
+| `debug`                    | `false`                         | Log API requests and full responses, with secrets redacted                       |
 
-Policy inputs always determine the reported `PASSED` or `FAILED` result. With `enforce_policy: false`, findings are reported as warnings without failing the job; scan and API errors still fail. Use review mode for scheduled or self scans and keep enforcement enabled for pull request gates.
-
-GitHub and Gitee HTTPS URLs are normalized to the `.git` form expected by Yuanxi. Explicit `repository`, `branch`, and `project_name` inputs override event-derived values.
+If you omit `project_name`, it is built from the repository name and branch. Names longer than 30 characters are shortened and given a short hash so they stay unique and stable.
 
 ### Outputs
 
-| Output              | Description                    |
-| ------------------- | ------------------------------ |
-| `result`            | `PASSED` or `FAILED`           |
-| `status`            | Final Yuanxi scan status       |
-| `project_id`        | Yuanxi project ID              |
-| `scan_id`           | Yuanxi scan task ID            |
-| `share_link`        | Report link returned by Yuanxi |
-| `vulnerabilities`   | Vulnerability count            |
-| `license_risks`     | Risky component-license count  |
-| `license_conflicts` | Project license-conflict count |
-| `json`              | Structured JSON report         |
+| Output              | Description                              |
+| ------------------- | ---------------------------------------- |
+| `result`            | `PASSED` or `FAILED`                     |
+| `status`            | Final Yuanxi scan status                 |
+| `project_id`        | Yuanxi project ID                        |
+| `scan_id`           | Yuanxi scan task ID                      |
+| `share_link`        | Report link, if Yuanxi returns one       |
+| `vulnerabilities`   | Number of open vulnerabilities           |
+| `license_risks`     | Number of components with risky licenses |
+| `license_conflicts` | Number of project license conflicts      |
+| `json`              | Full [structured report](#json-report)   |
 
-Policy violations and operational errors fail the Action step.
+The Action also writes a job summary and adds annotations. It shows up to 20 per category, with the most severe vulnerabilities first. Blocking findings are errors and everything else is a warning.
 
-The `json` output contains versioned `target`, `scan`, `result`, `summary`, and `details` fields. Give the scan step an `id` and pass `${{ steps.warden.outputs.json }}` to a later webhook step. The included `.github/workflows/warden.yml` scans this project on pushes and supports manually overriding the public repository URL and branch; configure the `YUANXI_TOKEN` repository secret before running it.
+### Using the Report in Later Steps
+
+```yaml
+- uses: oss-infra/warden-action@main
+  id: warden
+  with:
+    token: ${{ secrets.YUANXI_TOKEN }}
+    enforce_policy: false
+
+- if: always() && steps.warden.outputs.json != ''
+  env:
+    WARDEN_REPORT: ${{ steps.warden.outputs.json }}
+  run: printf '%s\n' "$WARDEN_REPORT" | jq . > warden-report.json
+```
+
+For complete examples, see [.github/workflows/pull-request.yml](.github/workflows/pull-request.yml) (a PR gate that blocks merges) and [.github/workflows/warden.yml](.github/workflows/warden.yml) (a self scan in review mode, with a manual trigger and a DingTalk notification).
+
+## Failure Policy
+
+The result is `FAILED` if **any** of these is true:
+
+- a vulnerability's severity is at or above `fail_on_severity`;
+- `fail_on_license_conflict` is `true` and there is at least one license conflict;
+- `fail_on_license_risk` is `true` and at least one component license is flagged as risky.
+
+Severity levels, from lowest to highest:
+
+| Input value | Yuanxi rank |
+| ----------- | ----------- |
+| `warning`   | 警告        |
+| `low`       | 低危        |
+| `medium`    | 中危        |
+| `high`      | 高危        |
+| `critical`  | 严重        |
+
+`none` turns off vulnerability-based failures.
+
+The defaults block `high` and `critical` vulnerabilities and any license conflict. Risky component licenses are reported but don't block.
+
+`enforce_policy` only decides what happens to the job, not the result:
+
+| `enforce_policy` | Policy result  | Job outcome                          |
+| ---------------- | -------------- | ------------------------------------ |
+| `true`           | `FAILED`       | Step fails                           |
+| `false`          | `FAILED`       | Step passes; findings are warnings   |
+| any              | scan/API error | Step fails, and `result` is `FAILED` |
+
+Use `enforce_policy: true` for pull request gates. Use `false` for scheduled or informational scans.
+
+## JSON Report
+
+Both the `json` output and `warden --json` produce the same versioned report:
+
+```jsonc
+{
+  "schemaVersion": "1.0",
+  "target":  { "repository": "...", "branch": "main", "scanType": "all" },
+  "scan":    { "status": "扫描完成", "projectName": "...", "projectId": "...", "scanId": "...",
+               "shareLink": "...", "projectPackage": "JAVA(Maven)", "licensePackage": "maven" },
+  "result":  "FAILED",
+  "summary": { "vulnerabilities": 3, "blockingVulnerabilities": 1, "licenseRisks": 0, "licenseConflicts": 1 },
+  "details": {
+    "vulnerabilities": [], "licenses": [],
+    "blockingVulnerabilities": [], "licenseRisks": [], "licenseConflicts": []
+  }
+}
+```
+
+`details` keeps every field Yuanxi returns, including new ones that are not listed here.
 
 ## CLI
 
-Node.js 24 or later and a Git checkout with a public GitHub/Gitee remote are required.
+You need Node.js 24 or later.
 
 ```bash
 pnpm install
-cp .env.example .env
-# Set YUANXI_TOKEN in .env.
-pnpm warden --scan-type all --fail-on-severity high
+cp .env.example .env          # then set YUANXI_TOKEN
+pnpm warden                   # scan the current checkout's origin + branch
 ```
 
-The CLI loads `.env` and accepts `YUANXI_TOKEN` or `WARDEN_TOKEN`. By default it reads the repository URL and branch from the current Git checkout.
+The CLI reads the token from `--token`, `WARDEN_TOKEN`, or `YUANXI_TOKEN`, and also loads `.env`. By default it scans `remote.origin.url` on the current branch. Pass options to override:
 
 ```bash
 pnpm warden \
-  --repository https://github.com/example/project.git \
+  --repository https://github.com/example/project \
   --branch main \
   --scan-type security \
+  --fail-on-severity critical \
   --json
 ```
 
-Exit codes:
+CLI options follow the Action inputs, using kebab-case (for example `--fail-on-severity`). The CLI also has `--json` (print the report to stdout) and `--help`. Progress and debug logs go to stderr, so stdout stays machine-readable.
 
-- `0`: policy passed;
-- `1`: policy failed;
-- `2`: configuration, network, API, scan, or timeout error.
+| Exit code | Meaning                                             |
+| --------- | --------------------------------------------------- |
+| `0`       | Policy passed                                       |
+| `1`       | Policy failed                                       |
+| `2`       | Configuration, network, API, scan, or timeout error |
 
-Run `pnpm warden --help` for all options.
+## Security Notes
 
-## Policy Defaults
-
-By default, `high` and `critical` vulnerabilities and any project license conflict fail the scan. Component license-risk flags are reported but do not fail unless `fail_on_license_risk` is enabled.
+- Yuanxi requires the token as a URL query parameter. The Action registers it as a secret so GitHub masks it in logs, and `debug` output redacts it. Don't turn on HTTP tracing (such as `NODE_DEBUG=http`) in CI.
+- Each API request times out after 60 seconds. The whole scan is limited by `timeout_seconds`.
+- Only public repositories are supported, because Yuanxi clones the repository itself.
 
 ## Development
 
@@ -161,18 +247,25 @@ By default, `high` and `critical` vulnerabilities and any project license confli
 git clone git@github.com:oss-infra/warden-action.git
 cd warden-action
 pnpm install
-pnpm typecheck
-pnpm test
-pnpm build
+pnpm check        # typecheck + test + build
 ```
 
-The source and tests are written in strict TypeScript. `dist/index.js` is the bundled GitHub Action entry point, and `dist/cli/index.js` is the bundled CLI entry point. Both must be rebuilt after changes under `src/`.
+| Path                    | Responsibility                                         |
+| ----------------------- | ------------------------------------------------------ |
+| `src/action.ts`         | GitHub Action entry: inputs, annotations, outputs      |
+| `src/cli.ts`            | CLI entry: argument parsing, Git defaults, exit codes  |
+| `src/config.ts`         | Input validation and normalization into `ScanConfig`   |
+| `src/github-context.ts` | Scan target resolution from GitHub event payloads      |
+| `src/run.ts`            | Wires the API client, scanner, and policy together     |
+| `src/scanner.ts`        | Scan lifecycle: create, poll, paginate results         |
+| `src/api-client.ts`     | Yuanxi HTTP client, error handling, debug redaction    |
+| `src/policy.ts`         | Severity thresholds and pass/fail evaluation           |
+| `src/format.ts`         | Human-readable messages and the structured JSON report |
+| `src/types.ts`          | Yuanxi API and internal types                          |
 
-The examples use `@main` so they work after the initial push. After publishing the `v1` tag, consumers should pin the Action to `oss-infra/warden-action@v1`.
+`dist/index.js` (Action) and `dist/cli/index.js` (CLI) are committed bundles. Run `pnpm build` and commit `dist/` after any change under `src/`.
 
 ## References
 
 - [Yuanxi security analysis platform](https://cybersec.antgroup.com/)
 - [YASA Engine](https://github.com/antgroup/YASA-Engine)
-
-The token is transmitted as an API query parameter because the current Yuanxi API requires it. GitHub masks the configured token in Action logs; avoid enabling HTTP request tracing in CI.

@@ -6,7 +6,7 @@ inputs:
     description: Yuanxi access token
     required: true
   scan_type:
-    description: Scan type (security, licenses, or all)
+    description: Scan type (security, licenses, or all; aliases stc and sca)
     required: false
     default: all
   repository:
@@ -16,7 +16,7 @@ inputs:
     description: Git branch; defaults to the pull request head branch or pushed branch
     required: false
   project_name:
-    description: Stable Yuanxi project name; generated from repository and branch when omitted
+    description: Stable Yuanxi project name (1-30 characters); generated from repository and branch when omitted
     required: false
   fail_on_severity:
     description: Minimum vulnerability severity that fails the action (warning, low, medium, high, critical, or none)
@@ -31,15 +31,15 @@ inputs:
     required: false
     default: "false"
   enforce_policy:
-    description: Fail the action when the configured policy finds blocking issues
+    description: Fail the job when the policy fails; set to false to only report findings as warnings
     required: false
     default: "true"
   timeout_seconds:
-    description: Maximum time to wait for the scan
+    description: Maximum time in seconds to wait for the scan to finish
     required: false
     default: "1200"
   poll_interval_seconds:
-    description: Delay between status requests
+    description: Delay in seconds between scan status requests
     required: false
     default: "10"
   api_base_url:
@@ -47,7 +47,7 @@ inputs:
     required: false
     default: https://cybersec.antgroup.com
   debug:
-    description: Log request URLs, parameters, and response counts with the token redacted
+    description: Log API requests and full response payloads with secrets redacted
     required: false
     default: "false"
 outputs:
@@ -62,7 +62,7 @@ outputs:
   share_link:
     description: Scan report share URL, when returned by the service
   vulnerabilities:
-    description: Number of vulnerabilities returned
+    description: Number of open vulnerabilities (fixed, false-positive, and ignored findings excluded)
   license_risks:
     description: Number of risky component licenses returned
   license_conflicts:

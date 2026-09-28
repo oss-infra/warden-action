@@ -3,7 +3,13 @@
 import { execFileSync } from "node:child_process";
 import dotenv from "dotenv";
 import { buildConfig } from "./config";
-import { structuredReport, summary, vulnerabilityMessage } from "./format";
+import {
+  licenseConflictMessage,
+  licenseRiskMessage,
+  structuredReport,
+  summary,
+  vulnerabilityMessage,
+} from "./format";
 import { run } from "./run";
 
 dotenv.config({ quiet: true });
@@ -112,20 +118,24 @@ export async function main(
     baseUrl: stringArgument(args, "api-base-url"),
     debug: args["debug"] === true,
   });
-  const outcome = await run(config, {
+  const { results, policy } = await run(config, {
     onStatus: (status) => console.error(`Scan status: ${status}`),
     onDebug: (message) => console.error(`[debug] ${message}`),
   });
   if (args["json"]) {
     process.stdout.write(
-      `${JSON.stringify(structuredReport(config, outcome.results, outcome.policy), null, 2)}\n`,
+      `${JSON.stringify(structuredReport(config, results, policy), null, 2)}\n`,
     );
   } else {
-    for (const item of outcome.results.vulnerabilities)
-      console.log(vulnerabilityMessage(item));
-    console.log(summary(outcome.results, outcome.policy));
+    const lines = [
+      ...results.vulnerabilities.map(vulnerabilityMessage),
+      ...policy.licenseRisks.map(licenseRiskMessage),
+      ...policy.licenseConflicts.map(licenseConflictMessage),
+      summary(results, policy),
+    ];
+    console.log(lines.join("\n"));
   }
-  return outcome.policy.failed ? 1 : 0;
+  return policy.failed ? 1 : 0;
 }
 
 if (require.main === module) {

@@ -12,18 +12,14 @@ import type {
 } from "./types";
 
 export const COMPLETE_STATUS = "扫描完成";
-const FAILED_STATUS = "扫描失败";
-const EXCLUDED_VULNERABILITY_STATUSES = new Set<VulnerabilityStatus>([
-  "已修复",
-  "误报",
-  "忽略",
-]);
+const DEFAULT_PAGE_SIZE = 300;
+// Guards against endpoints that keep returning full pages without totalPages.
+const MAX_PAGES = 1000;
+const EXCLUDED_VULNERABILITY_STATUSES: ReadonlySet<string> =
+  new Set<VulnerabilityStatus>(["已修复", "误报", "忽略"]);
 
 export function isCountedVulnerability(item: Vulnerability): boolean {
-  return !(
-    item.status &&
-    EXCLUDED_VULNERABILITY_STATUSES.has(item.status as VulnerabilityStatus)
-  );
+  return !item.status || !EXCLUDED_VULNERABILITY_STATUSES.has(item.status);
 }
 
 function sleep(milliseconds: number): Promise<void> {
@@ -31,7 +27,7 @@ function sleep(milliseconds: number): Promise<void> {
 }
 
 export function normalizeRepository(repository: string): string {
-  const value = repository.trim().replace(/\/$/, "");
+  const value = repository.trim().replace(/\/+$/, "");
   if (
     /^https?:\/\/(?:www\.)?(?:github\.com|gitee\.com)\//i.test(value) &&
     !value.endsWith(".git")
@@ -67,22 +63,29 @@ export function validateProjectName(projectName: string): string {
   return projectName;
 }
 
+function isLastPage(
+  page: number,
+  totalPages: PageData<unknown>["totalPages"],
+  pageIsShort: boolean,
+): boolean {
+  const total = Number(totalPages);
+  const last =
+    totalPages != null && Number.isFinite(total) ? page >= total : pageIsShort;
+  if (!last && page >= MAX_PAGES)
+    throw new Error(`Pagination exceeded ${MAX_PAGES} pages; aborting`);
+  return last;
+}
+
 export async function collectPages<T>(
   fetchPage: (page: number, size: number) => Promise<PageData<T>>,
-  selectItems: (data: PageData<T>) => T[],
-  pageSize = 300,
+  pageSize = DEFAULT_PAGE_SIZE,
 ): Promise<T[]> {
   const items: T[] = [];
   for (let page = 1; ; page += 1) {
     const data = await fetchPage(page, pageSize);
-    const pageItems = selectItems(data);
+    const pageItems = data.itemList ?? [];
     items.push(...pageItems);
-    const hasTotalPages = Number.isFinite(Number(data.totalPages));
-    if (
-      (hasTotalPages && page >= Number(data.totalPages)) ||
-      (!hasTotalPages && pageItems.length < pageSize)
-    )
-      break;
+    if (isLastPage(page, data.totalPages, pageItems.length < pageSize)) break;
   }
   return items;
 }
@@ -90,7 +93,7 @@ export async function collectPages<T>(
 export async function collectLicensePages(
   client: Pick<ScannerClient, "getLicenses">,
   repoId: string,
-  pageSize = 300,
+  pageSize = DEFAULT_PAGE_SIZE,
 ): Promise<{
   licenses: License[];
   licenseConflicts: LicenseConflict[];
@@ -106,6 +109,7 @@ export async function collectLicensePages(
     const pageLicenses = data.sbomLicense ?? [];
     const pageConflicts = data.projectLicenseConflict ?? [];
     licenses.push(...pageLicenses);
+    // The API may repeat project-level conflicts on every page.
     for (const conflict of pageConflicts) {
       const key = JSON.stringify(conflict);
       if (!seenConflicts.has(key)) {
@@ -113,14 +117,9 @@ export async function collectLicensePages(
         licenseConflicts.push(conflict);
       }
     }
-    const hasTotalPages = Number.isFinite(Number(data.totalPages));
     const pageIsShort =
       pageLicenses.length < pageSize && pageConflicts.length < pageSize;
-    if (
-      (hasTotalPages && page >= Number(data.totalPages)) ||
-      (!hasTotalPages && pageIsShort)
-    )
-      break;
+    if (isLastPage(page, data.totalPages, pageIsShort)) break;
   }
   return { licenses, licenseConflicts, licensePackage };
 }
@@ -138,21 +137,19 @@ export async function waitForScan(
   options: WaitOptions,
 ): Promise<ScanStatus> {
   const startedAt = Date.now();
-  let statusData: ScanStatus | undefined;
-  while (Date.now() - startedAt <= options.timeoutMs) {
-    statusData = await client.getStatus(scanId);
-    options.onStatus?.(statusData.status);
-    if (statusData.status === COMPLETE_STATUS) return statusData;
-    if (
-      statusData.status === FAILED_STATUS ||
-      statusData.status.includes("失败")
-    ) {
-      throw new Error(`Scan failed: ${statusData.status}`);
-    }
-    await options.sleep(options.pollIntervalMs);
+  let status = "unknown";
+  for (;;) {
+    const statusData = await client.getStatus(scanId);
+    status = String(statusData.status ?? "unknown");
+    options.onStatus?.(status);
+    if (status === COMPLETE_STATUS) return statusData;
+    if (status.includes("失败")) throw new Error(`Scan failed: ${status}`);
+    const remaining = options.timeoutMs - (Date.now() - startedAt);
+    if (remaining <= 0) break;
+    await options.sleep(Math.min(options.pollIntervalMs, remaining));
   }
   throw new Error(
-    `Scan timed out after ${Math.ceil(options.timeoutMs / 1000)} seconds (last status: ${statusData?.status ?? "unknown"})`,
+    `Scan timed out after ${Math.ceil(options.timeoutMs / 1000)} seconds (last status: ${status})`,
   );
 }
 
@@ -187,8 +184,8 @@ export async function runScan(
   });
   if (!task.scanId || !task.projectId)
     throw new Error("Yuanxi did not return scanId and projectId");
-  const scanId = task.scanId;
-  const projectId = task.projectId;
+  const scanId = String(task.scanId);
+  const projectId = String(task.projectId);
 
   const status = await waitForScan(client, scanId, {
     timeoutMs: input.timeoutMs,
@@ -197,32 +194,22 @@ export async function runScan(
     ...(hooks.onStatus ? { onStatus: hooks.onStatus } : {}),
   });
 
-  const results: Pick<
-    ScanResults,
-    "vulnerabilities" | "licenses" | "licenseConflicts" | "licensePackage"
-  > = {
-    vulnerabilities: [],
-    licenses: [],
-    licenseConflicts: [],
-    licensePackage: "",
-  };
-  if (input.scanType === "security" || input.scanType === "all") {
-    results.vulnerabilities = (
-      await collectPages(
-        (page, size) => client.getVulnerabilities(projectId, page, size),
-        (data) => data.itemList ?? [],
-      )
-    ).filter(isCountedVulnerability);
-  }
-  if (input.scanType === "licenses" || input.scanType === "all") {
-    const licenseData = await collectLicensePages(client, projectId);
-    results.licenses = licenseData.licenses;
-    results.licenseConflicts = licenseData.licenseConflicts;
-    results.licensePackage = licenseData.licensePackage;
-  }
+  const includeSecurity = input.scanType !== "licenses";
+  const includeLicenses = input.scanType !== "security";
+  const vulnerabilities = includeSecurity
+    ? (
+        await collectPages((page, size) =>
+          client.getVulnerabilities(projectId, page, size),
+        )
+      ).filter(isCountedVulnerability)
+    : [];
+  const licenseData = includeLicenses
+    ? await collectLicensePages(client, projectId)
+    : { licenses: [], licenseConflicts: [], licensePackage: "" };
 
   return {
-    ...results,
+    vulnerabilities,
+    ...licenseData,
     projectName,
     projectId,
     scanId,

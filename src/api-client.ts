@@ -9,7 +9,9 @@ import type {
   VulnerabilityQuery,
 } from "./types";
 
+export const DEFAULT_BASE_URL = "https://cybersec.antgroup.com";
 const API_PREFIX = "/api/sca/open/v1/repo";
+const REQUEST_TIMEOUT_MS = 60_000;
 const SENSITIVE_KEY = /token|secret|authorization|private[_-]?key/i;
 const SENSITIVE_QUERY_PARAMETER =
   /([?&](?:access_token|stoken|token|secret)=)[^&#\s"']*/gi;
@@ -107,19 +109,23 @@ interface FetchResponse {
   json(): Promise<unknown>;
 }
 
+export interface FetchOptions {
+  method: string;
+  headers?: Record<string, string>;
+  body?: string;
+  signal?: AbortSignal;
+}
+
 export type FetchImplementation = (
   url: URL,
-  options: {
-    method: string;
-    headers?: Record<string, string>;
-    body?: string;
-  },
+  options: FetchOptions,
 ) => Promise<FetchResponse>;
 
 interface ClientOptions {
   token: string;
   baseUrl?: string;
   fetchImpl?: FetchImplementation;
+  requestTimeoutMs?: number;
   debug?: boolean;
   logger?: (message: string) => void;
 }
@@ -128,22 +134,25 @@ export class WardenApiClient implements ScannerClient {
   private readonly token: string;
   private readonly baseUrl: string;
   private readonly fetch: FetchImplementation;
+  private readonly requestTimeoutMs: number;
   private readonly debug: boolean;
   private readonly logger: (message: string) => void;
 
   constructor({
     token,
-    baseUrl = "https://cybersec.antgroup.com",
+    baseUrl = DEFAULT_BASE_URL,
     fetchImpl = globalThis.fetch,
+    requestTimeoutMs = REQUEST_TIMEOUT_MS,
     debug = false,
     logger = () => {},
   }: ClientOptions) {
     if (!token) throw new Error("token is required");
     if (typeof fetchImpl !== "function")
-      throw new Error("fetch is unavailable; Node.js 20 or later is required");
+      throw new Error("fetch is unavailable; Node.js 24 or later is required");
     this.token = token;
-    this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.fetch = fetchImpl;
+    this.requestTimeoutMs = requestTimeoutMs;
     this.debug = debug;
     this.logger = logger;
   }
@@ -190,13 +199,18 @@ export class WardenApiClient implements ScannerClient {
     } = {},
   ): Promise<T> {
     const { query = {}, body } = options;
+    const label = `${method} ${path}`;
     const url = new URL(`${this.baseUrl}${path}`);
-    const queryWithToken = {
-      ...query,
-      token: this.token,
-    };
+    const queryWithToken = { ...query, token: this.token };
     url.search = new URLSearchParams(queryWithToken).toString();
-    const headers = body ? { "content-type": "application/json" } : undefined;
+    const requestOptions: FetchOptions = {
+      method,
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
+    };
+    if (body) {
+      requestOptions.headers = { "content-type": "application/json" };
+      requestOptions.body = JSON.stringify(body);
+    }
     const startedAt = Date.now();
     if (this.debug) {
       const safeUrl = new URL(url);
@@ -206,41 +220,47 @@ export class WardenApiClient implements ScannerClient {
           `API request: ${method} ${safeUrl.toString()}`,
           `  path: ${path}`,
           `  query: ${debugJson(queryWithToken)}`,
-          `  headers: ${debugJson(headers ?? {})}`,
+          `  headers: ${debugJson(requestOptions.headers ?? {})}`,
           `  body: ${body === undefined ? "none" : debugJson(body)}`,
         ].join("\n"),
       );
     }
-    const requestOptions: {
-      method: string;
-      headers?: Record<string, string>;
-      body?: string;
-    } = { method };
-    if (headers) requestOptions.headers = headers;
-    if (body) requestOptions.body = JSON.stringify(body);
-    const response = await this.fetch(url, requestOptions);
 
-    let rawPayload: unknown;
+    let response: FetchResponse;
     try {
-      rawPayload = await response.json();
+      response = await this.fetch(url, requestOptions);
+    } catch (error) {
+      const reason =
+        error instanceof Error && error.name === "TimeoutError"
+          ? `timed out after ${this.requestTimeoutMs} ms`
+          : error instanceof Error
+            ? error.message
+            : String(error);
+      throw new WardenApiError(`${label}: request failed (${reason})`, {
+        cause: error,
+      });
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
     } catch (error) {
       throw new WardenApiError(
-        `Yuanxi returned invalid JSON (${response.status})`,
+        `${label}: Yuanxi returned invalid JSON (HTTP ${response.status})`,
         { cause: error, status: response.status },
       );
     }
-    if (!isApiEnvelope(rawPayload)) {
+    if (!isApiEnvelope(payload)) {
       throw new WardenApiError(
-        `${method} ${path}: Yuanxi returned an invalid response envelope`,
+        `${label}: Yuanxi returned an invalid response envelope`,
         { status: response.status },
       );
     }
-    const payload = rawPayload;
 
     if (this.debug) {
       this.logger(
         [
-          `API response: ${method} ${path}`,
+          `API response: ${label}`,
           `  durationMs: ${Date.now() - startedAt}`,
           `  httpStatus: ${response.status}`,
           `  code: ${String(payload.code)}`,
@@ -252,18 +272,15 @@ export class WardenApiClient implements ScannerClient {
       );
     }
 
-    if (!response.ok || payload.success === false || payload.code !== 0) {
+    if (!response.ok || !payload.success || payload.code !== 0) {
       throw new WardenApiError(
-        `${method} ${path}: ${payload.message || `Yuanxi request failed (${response.status})`}`,
-        {
-          status: response.status,
-          code: payload.code,
-        },
+        `${label}: ${payload.message || `Yuanxi request failed (HTTP ${response.status})`}`,
+        { status: response.status, code: payload.code },
       );
     }
-    if (!("data" in payload) || payload.data === undefined) {
+    if (payload.data === undefined) {
       throw new WardenApiError(
-        `${method} ${path}: Yuanxi returned an invalid response envelope`,
+        `${label}: Yuanxi returned an invalid response envelope`,
         { status: response.status, code: payload.code },
       );
     }

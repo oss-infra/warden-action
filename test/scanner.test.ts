@@ -69,6 +69,20 @@ test("throws when polling reaches a failed state", async () => {
   );
 });
 
+test("times out when the scan never completes", async () => {
+  const client: Pick<ScannerClient, "getStatus"> = {
+    getStatus: async () => ({ status: "扫描中" }),
+  };
+  await assert.rejects(
+    waitForScan(client, "scan-1", {
+      timeoutMs: 5,
+      pollIntervalMs: 1,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    }),
+    /timed out .*last status: 扫描中/,
+  );
+});
+
 test("does not count resolved, false-positive, or ignored vulnerabilities", () => {
   const vulnerabilities = [
     { id: 1, status: "待处置" as const },

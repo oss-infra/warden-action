@@ -57,3 +57,35 @@ test("rejects pull request events without an accessible head repository", () => 
     /accessible head repository and branch/,
   );
 });
+
+test("rejects tag refs instead of scanning them as branches", () => {
+  assert.throws(
+    () =>
+      resolveGitHubTarget({
+        eventName: "push",
+        ref: "refs/tags/v1.0.0",
+        payload: {
+          ref: "refs/tags/v1.0.0",
+          repository: { clone_url: "https://github.com/acme/project.git" },
+        },
+      }),
+    /does not reference a repository branch/,
+  );
+});
+
+test("falls back to GITHUB_REPOSITORY when the payload has no repository", () => {
+  assert.deepEqual(
+    resolveGitHubTarget({
+      eventName: "schedule",
+      ref: "refs/heads/main",
+      serverUrl: "https://github.com",
+      repositoryName: "acme/project",
+      payload: {},
+    }),
+    {
+      repository: "https://github.com/acme/project.git",
+      branch: "main",
+      eventName: "schedule",
+    },
+  );
+});

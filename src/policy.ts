@@ -1,20 +1,23 @@
-import type { PolicyResult, ScanResults } from "./types";
+import type { PolicyResult, ScanResults, Vulnerability } from "./types";
 
-const SEVERITY = {
-  警告: 1,
-  warning: 1,
-  低危: 2,
-  low: 2,
-  中危: 3,
-  medium: 3,
-  高危: 4,
-  high: 4,
-  严重: 5,
-  critical: 5,
-  none: Number.POSITIVE_INFINITY,
-} as const satisfies Readonly<Record<string, number>>;
+const SEVERITY: ReadonlyMap<string, number> = new Map([
+  ["警告", 1],
+  ["warning", 1],
+  ["低危", 2],
+  ["low", 2],
+  ["中危", 3],
+  ["medium", 3],
+  ["高危", 4],
+  ["high", 4],
+  ["严重", 5],
+  ["critical", 5],
+]);
 
-type Severity = keyof typeof SEVERITY;
+// Thresholds additionally accept "none"; it is never a valid vulnerability rank.
+const THRESHOLD: ReadonlyMap<string, number> = new Map([
+  ...SEVERITY,
+  ["none", Number.POSITIVE_INFINITY],
+]);
 
 export interface PolicyOptions {
   failOnSeverity?: string;
@@ -22,16 +25,22 @@ export interface PolicyOptions {
   failOnLicenseConflict?: boolean;
 }
 
-function isSeverity(value: string): value is Severity {
-  return Object.hasOwn(SEVERITY, value);
-}
-
-export function normalizeThreshold(value = "high"): Severity {
-  const key = String(value).trim().toLowerCase();
-  if (!isSeverity(key)) {
+export function normalizeThreshold(value = "high"): string {
+  const key = value.trim().toLowerCase();
+  if (!THRESHOLD.has(key)) {
     throw new Error(`Invalid fail-on severity: ${value}`);
   }
   return key;
+}
+
+export function severityScore(item: Pick<Vulnerability, "rank">): number {
+  return (
+    SEVERITY.get(
+      String(item.rank ?? "")
+        .trim()
+        .toLowerCase(),
+    ) ?? 0
+  );
 }
 
 export function evaluatePolicy(
@@ -41,13 +50,11 @@ export function evaluatePolicy(
   >,
   options: PolicyOptions = {},
 ): PolicyResult {
-  const threshold = normalizeThreshold(options.failOnSeverity);
-  const thresholdValue = SEVERITY[threshold];
+  const threshold =
+    THRESHOLD.get(normalizeThreshold(options.failOnSeverity)) ??
+    Number.POSITIVE_INFINITY;
   const blockingVulnerabilities = results.vulnerabilities.filter(
-    (item) => {
-      const rank = item.rank ?? "";
-      return (isSeverity(rank) ? SEVERITY[rank] : 0) >= thresholdValue;
-    },
+    (item) => severityScore(item) >= threshold,
   );
   const licenseRisks = results.licenses.filter(
     (item) => item.isRisk === true || item.isRisk === "true",

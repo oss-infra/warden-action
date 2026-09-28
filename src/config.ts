@@ -1,3 +1,5 @@
+import { DEFAULT_BASE_URL } from "./api-client";
+import { normalizeThreshold } from "./policy";
 import type { ScanConfig, ScanType } from "./types";
 
 const SCAN_TYPE_ALIASES: Readonly<Record<string, ScanType>> = {
@@ -10,7 +12,8 @@ function isScanType(value: string): value is ScanType {
 }
 
 export function normalizeScanType(value = "all"): ScanType {
-  const normalized = SCAN_TYPE_ALIASES[value] ?? value;
+  const key = value.trim().toLowerCase();
+  const normalized = SCAN_TYPE_ALIASES[key] ?? key;
   if (!isScanType(normalized)) throw new Error(`Invalid scan type: ${value}`);
   return normalized;
 }
@@ -33,11 +36,13 @@ export interface ConfigValues {
 export function parseBoolean(
   value: boolean | string | undefined,
   name: string,
+  defaultValue = false,
 ): boolean {
   if (typeof value === "boolean") return value;
-  if (value === undefined || value === "") return false;
-  if (value === "true") return true;
-  if (value === "false") return false;
+  const normalized = value?.trim().toLowerCase() ?? "";
+  if (normalized === "") return defaultValue;
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
   throw new Error(`${name} must be true or false`);
 }
 
@@ -59,20 +64,18 @@ export function buildConfig(values: ConfigValues): ScanConfig {
   if (!values.branch) throw new Error("branch is required");
   return {
     token: values.token,
-    baseUrl: values.baseUrl || "https://cybersec.antgroup.com",
+    baseUrl: values.baseUrl || DEFAULT_BASE_URL,
     repository: values.repository,
     branch: values.branch,
     projectName: values.projectName || "",
-    scanType: normalizeScanType(values.scanType),
+    scanType: normalizeScanType(values.scanType || undefined),
     debug: parseBoolean(values.debug, "debug"),
-    failOnSeverity: values.failOnSeverity || "high",
-    failOnLicenseConflict:
-      values.failOnLicenseConflict === undefined
-        ? true
-        : parseBoolean(
-            values.failOnLicenseConflict,
-            "fail-on-license-conflict",
-          ),
+    failOnSeverity: normalizeThreshold(values.failOnSeverity || undefined),
+    failOnLicenseConflict: parseBoolean(
+      values.failOnLicenseConflict,
+      "fail-on-license-conflict",
+      true,
+    ),
     failOnLicenseRisk: parseBoolean(
       values.failOnLicenseRisk,
       "fail-on-license-risk",

@@ -1,15 +1,23 @@
+interface GitHubRepositoryPayload {
+  clone_url?: string;
+  html_url?: string;
+}
+
 export interface GitHubContext {
   eventName?: string;
   ref?: string;
+  serverUrl?: string;
+  /** `owner/name`, as provided by `GITHUB_REPOSITORY`. */
+  repositoryName?: string;
   payload?: {
     ref?: string;
-    repository?: { clone_url?: string; html_url?: string };
+    repository?: GitHubRepositoryPayload;
     pull_request?: {
       number?: number;
       base?: { ref?: string };
       head?: {
         ref?: string;
-        repo?: { clone_url?: string; html_url?: string } | null;
+        repo?: GitHubRepositoryPayload | null;
       };
     };
   };
@@ -22,13 +30,25 @@ export interface GitHubTarget {
   pullRequestNumber?: number;
 }
 
+function repositoryUrl(
+  repository: GitHubRepositoryPayload | null | undefined,
+): string | undefined {
+  return repository?.clone_url || repository?.html_url;
+}
+
+function branchFromRef(ref: string | undefined): string | undefined {
+  return ref?.startsWith("refs/heads/")
+    ? ref.slice("refs/heads/".length)
+    : undefined;
+}
+
 export function resolveGitHubTarget(context: GitHubContext): GitHubTarget {
   const payload = context.payload || {};
   const pullRequest = payload.pull_request;
+  const eventName = context.eventName ? { eventName: context.eventName } : {};
 
   if (pullRequest) {
-    const repository =
-      pullRequest.head?.repo?.clone_url || pullRequest.head?.repo?.html_url;
+    const repository = repositoryUrl(pullRequest.head?.repo);
     const branch = pullRequest.head?.ref;
     if (!repository || !branch) {
       throw new Error(
@@ -38,7 +58,7 @@ export function resolveGitHubTarget(context: GitHubContext): GitHubTarget {
     return {
       repository,
       branch,
-      ...(context.eventName ? { eventName: context.eventName } : {}),
+      ...eventName,
       ...(pullRequest.number !== undefined
         ? { pullRequestNumber: pullRequest.number }
         : {}),
@@ -46,18 +66,15 @@ export function resolveGitHubTarget(context: GitHubContext): GitHubTarget {
   }
 
   const repository =
-    payload.repository?.clone_url || payload.repository?.html_url;
-  const branch =
-    payload.ref?.replace(/^refs\/heads\//, "") ||
-    context.ref?.replace(/^refs\/heads\//, "");
+    repositoryUrl(payload.repository) ||
+    (context.repositoryName
+      ? `${context.serverUrl || "https://github.com"}/${context.repositoryName}.git`
+      : undefined);
+  const branch = branchFromRef(payload.ref) || branchFromRef(context.ref);
   if (!repository || !branch) {
     throw new Error(
-      `GitHub ${context.eventName || "unknown"} event does not contain a repository and branch`,
+      `GitHub ${context.eventName || "unknown"} event does not reference a repository branch; set the repository and branch inputs`,
     );
   }
-  return {
-    repository,
-    branch,
-    ...(context.eventName ? { eventName: context.eventName } : {}),
-  };
+  return { repository, branch, ...eventName };
 }

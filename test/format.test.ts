@@ -1,6 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { licenseRiskMessage, structuredReport } from "../src/format";
+import {
+  licenseConflictMessage,
+  licenseRiskMessage,
+  structuredReport,
+} from "../src/format";
+
+test("formats license conflicts with an optional explanation", () => {
+  assert.equal(
+    licenseConflictMessage({ projectLicense: "MIT", sbomLicense: "GPL-3.0" }),
+    "License conflict: MIT / GPL-3.0",
+  );
+  assert.equal(
+    licenseConflictMessage({ sbomLicense: "GPL-3.0", explanation: "copyleft" }),
+    "License conflict: ? / GPL-3.0 | copyleft",
+  );
+});
 
 test("formats license risks for action annotations", () => {
   assert.equal(

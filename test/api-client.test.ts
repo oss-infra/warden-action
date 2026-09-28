@@ -188,6 +188,20 @@ test("rejects a malformed API envelope", async () => {
   await assert.rejects(client.getStatus("scan-1"), /invalid response envelope/i);
 });
 
+test("wraps network failures with the request label", async () => {
+  const client = new WardenApiClient({
+    token: "token",
+    fetchImpl: async () => {
+      throw new TypeError("fetch failed");
+    },
+  });
+
+  await assert.rejects(
+    client.getStatus("scan-1"),
+    /GET \/api\/sca\/open\/v1\/repo\/job\/status: request failed \(fetch failed\)/,
+  );
+});
+
 test("debug logging includes request details without exposing the token", async () => {
   const messages: string[] = [];
   const client = new WardenApiClient({
